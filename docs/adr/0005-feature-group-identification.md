@@ -22,7 +22,7 @@ Group work into **vertical feature groups**, one per verifiable endpoint, delive
 | FG0 | Prerequisites | 1 | private repo, `.gitignore`, lockfile, scoped `quest-deployer` identity, Docker, Terraform | none |
 | FG1 | Packaging | 3 (image only) | local container serves `/` and the other routes (**done 2026-10-20**) | FG0 |
 | FG2 | Public cloud + index page | 2, 4 | `/` shows the secret word; `/aws` | FG1 |
-| FG3 | Containerized runtime | 3 | `/docker` (**gate**: Fargate vs ECS on EC2, ADR-0001) | FG2 |
+| FG3 | Containerized runtime | 3 | `/docker` **fails on Fargate (accepted, ADR-0001)**; the container itself runs and passes `/docker` on a real Docker runtime locally | FG2 |
 | FG4 | Secret word injection | 5 | `/secret_word` | FG2 |
 | FG5 | Load balancer | 6 | `/loadbalanced` | FG2 |
 | FG6 | TLS | 7 | `/tls` | FG5 |
@@ -49,7 +49,7 @@ Reading the secret word (resolved by a local run on 2026-10-20):
 
 ## Risks
 1. `/aws` and `/tls` semantics are not fully known.
-2. `/docker` may fail on Fargate (ADR-0001).
+2. `/docker` fails on Fargate (confirmed 2026-10-20, accepted in ADR-0001).
 3. `/secret_word` may compare against a value we cannot see; the word on the index page may be static or per-environment, which is unverified.
 4. Scope creep into the optional multi-cloud extra credit.
 

@@ -1,4 +1,4 @@
-# Quest Plan: AWS, Terraform, ECS (Fargate, provisional)
+# Quest Plan: AWS, Terraform, ECS Fargate
 
 Status: Proposed. Decisions are recorded in `docs/adr/0001` to `0010`. This revision incorporates a self-review of the first draft (see "Corrections log"), a portability decision (ADR-0010), and a second round of web-checked corrections.
 
@@ -66,8 +66,8 @@ Inferred, not verified:
 2. **Secret word (FG2, FG4)**
    - Verified locally: `/` shows no word outside a cloud. Deploy once without `SECRET_WORD`, read the word from `/` on the deployment, then redeploy with it set (ADR-0005).
    - Pass it as a `sensitive` Terraform variable. Do not hardcode it.
-3. **Early Fargate gate (FG3)**
-   - **Result (2026-10-20): `/docker` fails on Fargate.** Do not create `/.dockerenv` in the image to force a pass. Options in ADR-0001: ECS on EC2 (a real Docker runtime), or accept 5 of 6 on Fargate and document it. Decision pending.
+3. **Fargate gate (FG3), done**
+   - **Result (2026-10-20): `/docker` fails on Fargate.** Decision: keep Fargate and document 5 of 6 (ADR-0001). Do not create `/.dockerenv` in the image to force a pass.
 4. **Terraform (`infra/aws/`)**
    - Networking: VPC, 2 public subnets across 2 AZs, internet gateway, route tables. No NAT.
    - ECR repository and a push step.
@@ -105,7 +105,7 @@ Inferred, not verified:
 | FG0 | Prerequisites | private repo, `.gitignore`, lockfile, scoped `quest-deployer` identity, Docker, Terraform | none |
 | FG1 | Packaging | local container serves all routes (**done 2026-10-20**, uncommitted) | FG0 |
 | FG2 | Public cloud + index page | `/` shows the secret word; `/aws` | FG1 |
-| FG3 | Containerized runtime | `/docker` (gate: Fargate vs ECS on EC2) | FG2 |
+| FG3 | Containerized runtime | `/docker`: fails on Fargate, accepted (ADR-0001) | FG2 |
 | FG4 | Secret word injection | `/secret_word` | FG2 |
 | FG5 | Load balancer | `/loadbalanced` | FG2 |
 | FG6 | TLS | `/tls` | FG5 |
@@ -152,7 +152,7 @@ docs/                       PLAN.md, adr/
 | Cost "a few dollars per day" | About $1.5 to $2/day by estimate; ALB and Fargate rates confirmed on AWS pricing pages, IPv4 rate still from memory | ADR-0008 |
 | The secret word differs per environment | Unverified; `bin/006` only reads the env var | ADR-0005, ADR-0006 |
 | Task 1 "mostly done" | `origin` is upstream; a private repo is needed | ADR-0004 |
-| Fargate chosen without caveat | `/docker` may fail on Fargate (`/.dockerenv`); early gate and EC2 fallback added | ADR-0001, ADR-0005 |
+| Fargate chosen without caveat | `/docker` fails on Fargate (`/.dockerenv`); kept Fargate and documented it | ADR-0001, ADR-0005 |
 | Real domain as a plain improvement | A Host match was not needed locally with ALB-style headers; still test on AWS | ADR-0003 |
 | `/tls` likely checks HTTPS headers | Reads `X-Forwarded-Proto: https` (verified with a forged header) | ADR-0003 |
 | Two-deploy flow vs local-run flow (docs disagreed) | Unified decision flow in ADR-0005 | ADR-0005 |
@@ -178,6 +178,6 @@ docs/                       PLAN.md, adr/
 - **Deployer credentials:** you must set the `quest-deployer` console password and MFA, then `aws login` as that user. The simulator proves the policy's allow/deny rules, but not that Terraform has every permission it needs. Expect to widen the policy if `plan` or `apply` hits AccessDenied.
 - **Build location:** local `docker buildx --platform linux/amd64` through OrbStack emulation (verified working). CodeBuild is only a fallback if local builds prove too slow.
 - **Apply:** done 2026-10-20 (31 resources), billed until `make destroy`. Expected cost about $1.5 to $2/day (ALB, Fargate, IPv4); the budget alert goes to the address in `terraform.tfvars`.
-- **`/docker`:** switch to ECS on EC2, or accept 5 of 6 on Fargate. See ADR-0001.
+- **`/docker`:** decided 2026-10-20: keep Fargate, document 5 of 6 (ADR-0001).
 - **Second cloud:** none is planned beyond the contract in ADR-0010. GCP or Azure is extra credit, taken only after the AWS deliverable is complete.
 - **Account type:** check whether the account is on the credits-based free plan and whether it restricts any service we need (ADR-0008).

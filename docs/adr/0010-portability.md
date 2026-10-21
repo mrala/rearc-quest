@@ -7,7 +7,7 @@ Status: Proposed
 - Terraform resource types are provider-specific. An abstraction over ECS, Cloud Run, and Container Apps would be leaky.
 - The app and image are already cloud-neutral: a Node container with no cloud SDK use, configured through the `SECRET_WORD` env var.
 - The checks are cloud-aware. `strings` on the supplied binaries shows `bin/001` and `bin/002` detect aws, gcp, and azure, and `bin/004` has separate success paths for ALB, GCP, and Azure load balancers. Portability therefore means the same contract per cloud, not the same results.
-- [INFERENCE] The `/docker` check (`/.dockerenv`) may fail on any containerd-based runtime (Fargate, Cloud Run, Kubernetes). Untested.
+- The `/docker` check (`/.dockerenv`) fails on Fargate (confirmed 2026-10-20). It may fail on other containerd-based runtimes (Cloud Run, Kubernetes) too; untested.
 
 ## Decision
 Make the **interface, image, and acceptance tests** portable. Do not abstract the cloud resources.
