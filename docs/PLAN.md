@@ -31,10 +31,17 @@ Verified in the local container (`quest:local`, linux/amd64, 2026-10-20):
 - Node as PID 1 ignored SIGTERM: `docker stop` took 10.4 s (SIGKILL, exit 137). With `tini` as PID 1 it takes 0.1 s (exit 143), so `tini` is in the image.
 - Forged headers show only what the checks look for. Only a real ALB proves them.
 
+Verified on the first Fargate deploy (2026-10-20, 31 resources; the ALB hostname changes on every rebuild; `ttl` tag 2026-10-27):
+- The apply ran with no AccessDenied and took about 3 minutes (the ALB takes about 2.5 min). A new image or a `SECRET_WORD` change rolls the service in about 3 to 4 minutes.
+- Both tasks pass the `/tls` health check with a read-only root filesystem and all capabilities dropped.
+- `/` panicked at first: `bin/001` fetches the secret word from `https://www.rearc.io` and failed with `x509: certificate signed by unknown authority`, because `node:24-slim` ships no CA bundle. Fixed by installing `ca-certificates` (commit `9f28ffd`). Locally `/` never reaches that call, so the local smoke test could not catch it.
+- After the fix `/` returns the secret word in 0.5 to 1.8 s and `/aws` says "You are running in AWS, Detected: ECS,AWS" in about 0.15 s. Cloud detection works on Fargate and is fast there; the 25 s was local only. Both tasks return the same word.
+- `/loadbalanced` and `/tls` pass through the real ALB. After setting `SECRET_WORD`, `/secret_word` prints the same word as the index page.
+- **`/docker` fails on Fargate**: "You dont seem to be running in a Docker container. This might be OK as many cloud container orchestration platforms do not use Docker". The `/.dockerenv` inference is confirmed. 5 of 6 routes pass.
+- HTTP returns 301 to HTTPS. Both task public IPs refuse direct connections on port 3000. The listener negotiates TLS 1.3 with `ELBSecurityPolicy-TLS13-1-2-2021-06`.
+
 Inferred, not verified:
-- [INFERENCE] Fargate (containerd) does not create `/.dockerenv`, so `/docker` may fail there. Gate on an early test.
 - [INFERENCE] Cost is about $1.5 to $2/day (ADR-0008); check the pricing page.
-- [INFERENCE] On Fargate the cloud detection in `bin/001` may be faster or slower than the 25 s seen locally; unknown. `/` is not used as the health-check path either way.
 - [INFERENCE] Restricting task egress may break the binaries, which embed HTTP clients (ADR-0009).
 
 ## Steps
@@ -60,8 +67,7 @@ Inferred, not verified:
    - Verified locally: `/` shows no word outside a cloud. Deploy once without `SECRET_WORD`, read the word from `/` on the deployment, then redeploy with it set (ADR-0005).
    - Pass it as a `sensitive` Terraform variable. Do not hardcode it.
 3. **Early Fargate gate (FG3)**
-   - Deploy a throwaway Fargate task and request `/docker`.
-   - If it fails, switch to ECS on EC2 (ADR-0001). Do not create `/.dockerenv` in the image to force a pass. Record the finding.
+   - **Result (2026-10-20): `/docker` fails on Fargate.** Do not create `/.dockerenv` in the image to force a pass. Options in ADR-0001: ECS on EC2 (a real Docker runtime), or accept 5 of 6 on Fargate and document it. Decision pending.
 4. **Terraform (`infra/aws/`)**
    - Networking: VPC, 2 public subnets across 2 AZs, internet gateway, route tables. No NAT.
    - ECR repository and a push step.
@@ -135,7 +141,7 @@ docs/                       PLAN.md, adr/
 | 0009 | Security |
 | 0010 | Cloud portability (contract, smoke test, per-cloud roots) |
 
-## Corrections log (self-review of the first draft)
+## Corrections log (self-review and deploy findings)
 
 | Original claim | Correction | ADR / section |
 |---|---|---|
@@ -161,12 +167,17 @@ docs/                       PLAN.md, adr/
 | Teardown ignored the EC2 fallback and tag-API gaps | Added EC2 resources and a manual checklist | ADR-0007 |
 | Dockerfile ran `node` as PID 1 | SIGTERM was ignored (10.4 s stop, exit 137); added `tini` | Dockerfile |
 | Two possible secret-word flows | Verified `/` shows no word locally, so deploy once, read it, redeploy | ADR-0005 |
+| Assumed `node:slim` ships CA certificates | It does not; `/` panicked on the first deploy. Added `ca-certificates` | Dockerfile |
+| Local smoke test treated as enough for `/` | `/` only reaches the TLS fetch inside a cloud; only a real deploy catches it | tests/smoke.sh |
+| `/docker` on Fargate "may fail" | Fails as predicted: Fargate has no `/.dockerenv` | ADR-0001 |
+| Cloud detection assumed possibly slow on Fargate | Fast there (about 0.15 to 1.8 s); the 25 s was local only | ADR-0003 |
 
 ## Open decisions
 
 - **Cloud and region:** AWS, `us-east-1` (set in the CLI config).
 - **Deployer credentials:** you must set the `quest-deployer` console password and MFA, then `aws login` as that user. The simulator proves the policy's allow/deny rules, but not that Terraform has every permission it needs. Expect to widen the policy if `plan` or `apply` hits AccessDenied.
 - **Build location:** local `docker buildx --platform linux/amd64` through OrbStack emulation (verified working). CodeBuild is only a fallback if local builds prove too slow.
-- **Apply:** I'll write and validate the IaC first and ask before the first `terraform apply`. Expected cost is about $1.5 to $2/day (ALB, Fargate, IPv4).
+- **Apply:** done 2026-10-20 (31 resources), billed until `make destroy`. Expected cost about $1.5 to $2/day (ALB, Fargate, IPv4); the budget alert goes to the address in `terraform.tfvars`.
+- **`/docker`:** switch to ECS on EC2, or accept 5 of 6 on Fargate. See ADR-0001.
 - **Second cloud:** none is planned beyond the contract in ADR-0010. GCP or Azure is extra credit, taken only after the AWS deliverable is complete.
 - **Account type:** check whether the account is on the credits-based free plan and whether it restricts any service we need (ADR-0008).

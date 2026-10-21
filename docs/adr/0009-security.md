@@ -12,10 +12,10 @@ Status: Proposed
 
 ## Decision
 1. **Do not modify the vendor app's behavior.** Contain the risk instead.
-2. **Network:** tasks accept traffic only from the ALB security group; the ALB exposes 80 (redirect) and 443 only. Task egress is **not** restricted at first: `bin/001`, `bin/002`, and `bin/004` embed `net/http` clients, and `001`/`002` use IMDSv2 over plain HTTP, so I do not yet know which outbound calls they make. Observe on the first deploy, then tighten egress to what is actually used (at minimum 443 for ECR and logs).
-3. **Container:** non-root user (uid 1000), read-only root filesystem, all Linux capabilities dropped, `no-new-privileges`, `tini` as PID 1, a pinned supported base image (digest if practical), and ECR image scan on push. All six routes were tested locally under `--read-only --cap-drop ALL --security-opt no-new-privileges`. In ECS, set `readonlyRootFilesystem` and `linuxParameters.capabilities.drop = ["ALL"]` (not yet tested on Fargate).
+2. **Network:** tasks accept traffic only from the ALB security group; the ALB exposes 80 (redirect) and 443 only. Verified on 2026-10-20: both task public IPs refuse direct connections on port 3000, and HTTP returns 301 to HTTPS. Task egress is **not** restricted at first: `bin/001` makes an outbound HTTPS call to `www.rearc.io` (seen in its error), and `bin/002` and `bin/004` embed HTTP clients, so egress must at least allow 443 to the internet. Observe, then tighten (ADR-0009, mitigation 7).
+3. **Container:** non-root user (uid 1000), read-only root filesystem, all Linux capabilities dropped, `no-new-privileges`, `tini` as PID 1, a pinned supported base image (digest if practical), and ECR image scan on push. All six routes were tested locally under these flags, and on Fargate both tasks run healthy with `readonlyRootFilesystem` and `capabilities.drop = ["ALL"]` and serve five of six routes (`/docker` fails for an unrelated reason, ADR-0001).
 4. **IAM:**
-   - **Task execution role:** only the AWS-managed `AmazonECSTaskExecutionRolePolicy`, and no task role, since no AWS API calls were observed in the app source. The binaries' cloud detection uses metadata endpoints; whether it needs IAM is untested.
+   - **Task execution role:** only the AWS-managed `AmazonECSTaskExecutionRolePolicy`, and no task role, since no AWS API calls were observed in the app source. Verified on Fargate on 2026-10-20: with no task role, `/aws` reports "Detected: ECS,AWS" and `/` fetches the word, so cloud detection needs no IAM.
    - **Deployer identity (done 2026-10-20):** root is not used for deploys. `infra/aws/bootstrap/bootstrap.sh` creates the IAM user `quest-deployer` with the customer-managed policy `QuestDeployer` (`infra/aws/bootstrap/quest-deployer-policy.json`) plus AWS's `SignInLocalDevelopmentAccess` so `aws login` works. The policy:
      - allows `ec2`, `ecs`, `ecr`, `elasticloadbalancing`, `acm`, `logs`, `autoscaling`, and `tag` only when `aws:RequestedRegion` is `us-east-1`;
      - limits IAM to roles and instance profiles named `quest-*`, allows `AttachRolePolicy` only for `AmazonECSTaskExecutionRolePolicy` and `AmazonEC2ContainerServiceforEC2Role`, and `PassRole` only to `ecs-tasks` and `ec2`;
@@ -45,8 +45,8 @@ Status: Proposed
 2. State file or tfvars leak exposes the key and secret word (no `.gitignore` yet).
 3. Self-signed cert trains users to click through warnings; no MITM protection for clients that skip verification.
 4. Public IPs on tasks, if the SG is ever loosened.
-5. Read-only root filesystem or dropped capabilities behave differently on Fargate than in local Docker. Not yet tested there.
-6. Removing the task IAM role breaks cloud detection if it needs IAM.
+5. Read-only root filesystem or dropped capabilities break a route. Checked on Fargate on 2026-10-20: no breakage.
+6. Removing the task IAM role breaks cloud detection if it needs IAM. Checked on Fargate on 2026-10-20: it does not.
 7. Restricting egress before observing the binaries breaks cloud detection or the checks.
 8. `ec2:*` in `us-east-1` is broad: if the deployer session were stolen it could launch many instances (cost, abuse).
 9. The policy may be missing an action Terraform needs, so `plan` or `apply` fails with AccessDenied.

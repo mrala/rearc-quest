@@ -37,14 +37,14 @@ Run the app on **AWS ECS on Fargate**, with at least 2 tasks across 2 AZs, **pro
 - (-) x86-64 forces an emulated or remote build on Apple Silicon.
 
 ## Risks
-1. `/docker` fails on Fargate because `/.dockerenv` is absent.
+1. **Confirmed 2026-10-20:** `/docker` fails on Fargate because `/.dockerenv` is absent (the check is `/.dockerenv` only). Fargate passes the other five routes.
 2. `exec format error` if the image is built for the wrong platform.
-3. Slim image lacks something the binaries need. (`express@4.22.3` started and served all routes on Node 26 locally; the container's Node 22 or 24 is not yet tested.)
+3. Slim image lacks something the binaries need. **Happened:** `node:24-slim` has no CA certificates, so `bin/001` could not verify `https://www.rearc.io` and `/` panicked on Fargate. Fixed by installing `ca-certificates`.
 4. `exec()` in `src/000.js` concatenates `JSON.stringify(req.headers)` into an unquoted shell command, so `$(...)` and backticks in a header value are expanded by the shell (see ADR-0009).
 5. Tasks in public subnets have public IPs.
 
 ## Mitigations
-1. Run the early Fargate gate before building the rest of the stack; fall back to ECS on EC2 if it fails. Record the result.
+1. The early Fargate gate ran on 2026-10-20 and failed `/docker`, as the plan anticipated. Next step is ECS on EC2 (Docker runtime, same ALB and Terraform layout), or documenting 5 of 6 on Fargate. Decision pending.
 2. Build with `--platform linux/amd64`, set the task `runtime_platform` to X86_64, and smoke-test the image before pushing.
 3. Test the slim image locally with all six routes; fall back to the non-slim image or another LTS.
 4. Do not edit the vendor-supplied app, since the quest scores its behavior. Contain the risk with a non-root user, egress tightened after observation (ADR-0009), no task IAM role, and security groups limiting ingress to the ALB. Document it in the README as a known limitation.
