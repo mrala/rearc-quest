@@ -22,7 +22,7 @@ Verify with the AWS Pricing Calculator for your region before the first apply. T
 - **No NAT gateway, no VPC endpoints, no EKS** (ADR-0001, ADR-0003).
 - **No autoscaling**; fixed `desired_count`.
 - CloudWatch log retention 7 days; ECR lifecycle policy keeps the last 5 images.
-- **AWS Budget** with an email alert at 80% of a small monthly limit (for example $10) and a forecasted alert, defined in Terraform.
+- **AWS Budget** with an email alert at 80% of actual and 100% of forecast spend (default limit $10), defined in Terraform and created only when `budget_email` is set. It covers the whole account: filtering by the `project` tag needs the tag activated as a cost allocation tag, which takes about a day, so other spend in the account counts toward the limit.
 - `default_tags` (`project`, `ttl`) so costs are attributable in Cost Explorer.
 - Deploy only for the review window, then destroy (ADR-0007).
 

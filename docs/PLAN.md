@@ -67,14 +67,15 @@ Inferred, not verified:
    - ECR repository and a push step.
    - ECS cluster, task definition (`SECRET_WORD`, CloudWatch logs, `runtime_platform` X86_64), service, execution role.
    - Security groups: the ALB accepts 80 and 443 from the internet. Tasks accept 3000 only from the ALB. Start with open task egress, observe, then tighten (ADR-0009).
-   - ALB with a target group on port 3000. Health-check path starts as `/` and is changed to the fastest route after measuring (ADR-0003).
+   - ALB with a target group on port 3000. The health-check path is `/tls`, a fast route (`/` takes about 25 s locally); re-measure on AWS (ADR-0003).
    - TLS: a self-signed RSA 2048 cert (placeholder CN, wildcard SAN) from the `tls` provider imported into ACM. HTTPS:443 listener, and HTTP:80 redirects to HTTPS.
    - At least 2 tasks so `/loadbalanced` shows real balancing.
-   - AWS Budget, tags (`project`, `ttl`), 7-day log retention, ECR lifecycle policy.
+   - AWS Budget (only when `budget_email` is set; it covers the whole account because tag filtering needs the cost allocation tag activated), tags (`project`, `managed_by`, optional `ttl`), 7-day log retention, ECR lifecycle policy (keep 5 images).
    - Output the ALB DNS name.
-   - Run `terraform validate` and `plan`. Several resource arguments and the TLS policy name come from memory.
-   - Write `infra/contract.md` (ADR-0010): the inputs (`image`, `image_tag`, `secret_word`, `replicas`, `tags`) and outputs (`url`, `lb_hostname`) every cloud root must provide. Treat it as provisional until a second cloud exists.
-   - **Done:** `Makefile` with `CLOUD` (default `aws`). `build`, `run-local`, `smoke-local` and `smoke` work; `plan`, `apply`, `push`, `destroy` and `verify-clean` delegate to `infra/$(CLOUD)/Makefile`, which does not exist yet (write it with the Terraform, including the `destroy` identity confirmation from ADR-0007). Images are tagged with the git SHA (`-dirty` if uncommitted), never `latest`.
+   - **Done, not applied:** the module (`infra/aws/*.tf`, 30 resources), `infra/aws/Makefile` and `infra/contract.md` are written. `terraform validate` passes on aws provider 6.69.1 and tls 4.4.1 (lock file committed). `terraform plan` as `quest-deployer` shows 30 to add, 0 to change, 0 to destroy. The TLS policy `ELBSecurityPolicy-TLS13-1-2-2021-06` exists (`aws elbv2 describe-ssl-policies`). 39 permission checks in the IAM simulator, covering every non-wildcard action Terraform needs (IAM, PassRole, service-linked roles, Budgets) plus spot checks of the wildcard services, are all allowed. A plan makes only read calls and the simulator proves allow/deny rules, so the first `apply` can still fail on an API-level error.
+   - `make apply` has to create the ECR repository first (`-target`), push the image, then apply the rest, because the service starts tasks as soon as it exists. The Makefile refuses to run as root and prints the identity and region first.
+   - `make verify-clean` queries the tagging API and each service, excludes the deployer's own user and policy, and exits 1 if anything is left. Tested clean, and against a stubbed leftover.
+   - **Done:** `Makefile` with `CLOUD` (default `aws`). `build`, `run-local`, `smoke-local` and `smoke` work; `plan`, `apply`, `push`, `destroy` and `verify-clean` delegate to `infra/$(CLOUD)/Makefile`. `apply` and `push` build first. Images are tagged with the git SHA (`-dirty` if uncommitted), never `latest`.
    - **Done:** `tests/smoke.sh [-k] [-H hdr]... [-s route]... [-t secs] BASE_URL` checks all six routes in parallel, prints one row per route, and exits non-zero on any failure. `EXPECT_SECRET_WORD` also checks `/secret_word`. The success text of `/` and `/aws` is unknown, so they pass when they return anything other than the "not in a cloud" text.
    - `make smoke-local` runs the hardened image with forged ALB headers and skips `/` and `/aws` (they need a cloud): 4 passed, 0 failed, 2 skipped, about 8 s. Tested failure paths: missing headers, wrong expected word, dead port, bad arguments.
 5. **Verify** through the ALB DNS name, using `curl -k`:
@@ -115,7 +116,7 @@ infra/
   aws/                      implemented now
   gcp/                      optional, later
 tests/smoke.sh              BASE_URL in, six checks out (done)
-Makefile                    CLOUD=aws by default (done; infra/aws/Makefile pending)
+Makefile                    CLOUD=aws by default (done)
 docs/                       PLAN.md, adr/
 ```
 
