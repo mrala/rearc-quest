@@ -291,12 +291,17 @@ your working directory. A working directory can hold files that must not be shar
 `.terraform/` and `node_modules/`. A fresh clone contains only committed files.
 
 ```
-git clone . /tmp/export/rearc-quest                 # run from inside the repository
-git -C /tmp/export/rearc-quest remote remove origin # the clone's origin is a path on your machine
-tar czf rearc-quest.tgz -C /tmp/export rearc-quest  # or: (cd /tmp/export && zip -qr ~/rearc-quest.zip rearc-quest)
+git clone --no-local --single-branch --branch master . /tmp/export/rearc-quest   # run from inside the repository
+git -C /tmp/export/rearc-quest remote remove origin   # the clone's origin is a path on your machine
+tar czf rearc-quest.tgz -C /tmp/export rearc-quest    # or: (cd /tmp/export && zip -qr ~/rearc-quest.zip rearc-quest)
 ```
 
-The archive keeps `.git` and the full history, and is about 60 MB, mostly the app's bundled binaries. Before
+Use your main branch's name in place of `master` if it differs. `--no-local --single-branch` matters: a plain
+local clone copies the whole object store, including commits from branches you deleted or never pushed (for
+example a backup branch), and those travel inside `.git` even after the clone's branches are removed. This form
+copies only the history reachable from the named branch.
+
+The archive keeps `.git` and that history, and is about 60 MB, mostly the app's bundled binaries. Before
 sending it, check that none of the private files are inside (this should print nothing):
 
 ```
@@ -305,10 +310,13 @@ tar tzf rearc-quest.tgz | grep -E 'tfstate|terraform\.tfvars$|\.terraform/|node_
 
 Other forms:
 
-- **One file with the history:** `git bundle create rearc-quest.bundle --all`. The recipient runs
-  `git clone rearc-quest.bundle quest`.
+- **One file with the history:** `git bundle create rearc-quest.bundle master` (name the branch; `--all` would
+  also pack every other branch). The recipient runs `git clone rearc-quest.bundle quest`.
 - **Source only, no history:** `git archive --format=zip --prefix=rearc-quest/ -o rearc-quest-source.zip HEAD`.
   The recipient then follows option c) above and must pass `TAG=...` to `make`.
+
+Commit author names and emails are part of the history and are shared with it. Review them first, for example
+with `git log --format='%an <%ae>' | sort -u`.
 
 ## Repository layout
 
