@@ -87,6 +87,10 @@ The only changes to the vendor app are `express` `~4.16.3` to `~4.22.3` in `pack
 Prerequisites: Docker with buildx, Terraform 1.9 or later (1.16.6 is pinned in `.tool-versions`),
 AWS CLI 2.32 or later (for `aws login`), and an AWS account.
 
+**Getting the code.** Clone the repository, or extract the compressed copy (it includes `.git`, so `make` works
+as is). A copy without `.git`, such as a GitHub zip download, needs `TAG=<label>` on every `make` command. The
+three options are in [`CUSTOMER.md`](CUSTOMER.md#1-get-the-code), and so is how to make a safe copy to share.
+
 1. **Create the deploy identity (once, with admin credentials).** Terraform does not run as the root user.
    `infra/aws/bootstrap/bootstrap.sh` creates the IAM user `quest-deployer` from a scoped policy:
    `us-east-1` only, IAM limited to roles named `quest-*`, only two AWS-managed policies (ECS task execution

@@ -45,8 +45,43 @@ and actual spend was not measured. Remove the stack when you are done (see [Tear
 
 ### 1. Get the code
 
+Use one of three ways. All give the same files; the first two keep the git history, which the Makefile uses
+to name each image.
+
+**a) Clone the repository** (you need access to it):
+
 ```
-git clone <this repository> quest && cd quest
+git clone <repository URL> quest
+cd quest
+```
+
+**b) Extract a compressed copy that includes `.git`** (a `.tgz` or `.zip` of the whole project directory):
+
+```
+tar xzf rearc-quest.tgz        # or: unzip rearc-quest.zip
+cd rearc-quest
+ls -a                          # a .git directory must be listed
+git status                     # should say: nothing to commit, working tree clean
+```
+
+With `.git` present, `make` needs no extra options. If the scripts lose their executable bit in extraction
+(some zip tools drop it), run `chmod +x tests/smoke.sh infra/aws/bootstrap/bootstrap.sh`.
+
+**c) Extract a copy without `.git`** (for example a zip downloaded from GitHub, or the output of
+`git archive`). The Makefile names each image after the current git commit. Without `.git` it prints
+`fatal: not a git repository` and tries to build an image tagged `quest:` with nothing after the colon, which
+Docker rejects. Either pass a label yourself on every `make` command, using a new label for each version you
+deploy (it becomes the image tag; never `latest`):
+
+```
+make apply TAG=2026-10-21a
+make smoke-local TAG=2026-10-21a
+```
+
+or turn the folder into a repository once and use the commit as the label:
+
+```
+git init && git add -A && git commit -m "import"
 ```
 
 ### 2. Create the deploy identity (once)
@@ -247,6 +282,33 @@ Know these before using it beyond an evaluation:
 
 `SOLUTION.md` has the findings, the reasoning and a longer list of improvements. `docs/adr/` has the design
 decisions with their alternatives.
+
+## Sharing a copy of the repository
+
+To give the project to someone without repository access, make the copy from a **fresh clone**, never from
+your working directory. A working directory can hold files that must not be shared: Terraform state
+(`infra/aws/terraform.tfstate`, which contains the TLS private key and the secret word), `terraform.tfvars`,
+`.terraform/` and `node_modules/`. A fresh clone contains only committed files.
+
+```
+git clone . /tmp/export/rearc-quest                 # run from inside the repository
+git -C /tmp/export/rearc-quest remote remove origin # the clone's origin is a path on your machine
+tar czf rearc-quest.tgz -C /tmp/export rearc-quest  # or: (cd /tmp/export && zip -qr ~/rearc-quest.zip rearc-quest)
+```
+
+The archive keeps `.git` and the full history, and is about 60 MB, mostly the app's bundled binaries. Before
+sending it, check that none of the private files are inside (this should print nothing):
+
+```
+tar tzf rearc-quest.tgz | grep -E 'tfstate|terraform\.tfvars$|\.terraform/|node_modules'
+```
+
+Other forms:
+
+- **One file with the history:** `git bundle create rearc-quest.bundle --all`. The recipient runs
+  `git clone rearc-quest.bundle quest`.
+- **Source only, no history:** `git archive --format=zip --prefix=rearc-quest/ -o rearc-quest-source.zip HEAD`.
+  The recipient then follows option c) above and must pass `TAG=...` to `make`.
 
 ## Repository layout
 
