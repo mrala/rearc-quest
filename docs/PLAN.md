@@ -91,7 +91,7 @@ Inferred, not verified:
    - `/docker`, `/secret_word`, `/loadbalanced` and `/tls` each report success. Record any that don't, with their output.
    - Request the task public IP directly and expect a timeout.
    - The injection was already confirmed locally; do not probe the public deployment.
-   - Screenshot the index page and each check before teardown.
+   - **Done 2026-10-20:** `docs/screenshots/01-index.png` to `06-tls.png`, one per route, taken through the ALB with headless Chromium (certificate errors ignored, since the cert is self-signed). Each image has a caption strip added above the page showing the URL, HTTP status and UTC capture time, because headless screenshots have no address bar; the page content below it is unmodified. `03-docker.png` is the accepted `/docker` failure. Retake them if the stack is rebuilt, because the ALB hostname changes.
 6. **Docs (FG7)**
    - `SOLUTION.md` covering architecture, deploy and teardown steps, observed findings, and the AI-usage disclosure: prompts, what helped, what the AI got wrong (see the corrections log), and what was verified. Be able to explain every decision in the interview; the ADRs are AI-drafted and contain judgment calls that need your own review.
    - The "Given more time, I would improve..." answer. Candidates: patching the `exec` injection with `execFile`, a real domain with ACM (after checking the Host question), private subnets with NAT or VPC endpoints, CI/CD with OIDC, Secrets Manager, WAF, autoscaling, remote state with locking, image scanning and pinned digests.
