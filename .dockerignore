@@ -1,0 +1,16 @@
+.git
+.gitignore
+.tool-versions
+node_modules
+Dockerfile
+.dockerignore
+README.md
+SOLUTION.md
+Makefile
+docs
+infra
+tests
+*.tfstate*
+*.tfvars
+*.tfvars.json
+.terraform
