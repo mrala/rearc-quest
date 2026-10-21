@@ -6,10 +6,14 @@ FROM --platform=linux/amd64 node:24-slim
 ENV NODE_ENV=production
 WORKDIR /app
 
-# Node as PID 1 ignores SIGTERM, so "docker stop" (and ECS) wait out the grace
+# tini: Node as PID 1 ignores SIGTERM, so "docker stop" (and ECS) wait out the grace
 # period and then SIGKILL the task. tini forwards signals and reaps children.
+# ca-certificates: bin/001 is a Go program that fetches the secret word from
+# https://www.rearc.io over TLS and verifies it against the system CA store, which
+# node:slim does not ship. Without it "/" panics with "x509: certificate signed by
+# unknown authority".
 RUN apt-get update \
- && apt-get install -y --no-install-recommends tini \
+ && apt-get install -y --no-install-recommends ca-certificates tini \
  && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies first so this layer is cached until the lockfile changes.
