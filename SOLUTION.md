@@ -76,6 +76,7 @@ Makefile                    same verbs on every cloud: build, smoke, plan, apply
 docs/adr/                   ten decision records
 docs/PLAN.md                the plan, findings and a log of what I got wrong
 docs/screenshots/           one screenshot per route
+CUSTOMER.md                 deployment guide for someone running this in their own AWS account
 ```
 
 The only changes to the vendor app are `express` `~4.16.3` to `~4.22.3` in `package.json` (7 `npm audit` findings,
