@@ -285,6 +285,7 @@ The full list, in rough order of value:
 11. **A second cloud (extra credit).** `infra/contract.md` and the cloud-neutral smoke test exist for this, but
     the contract was drawn from one cloud and may need revising. The check binaries have separate success
     paths for GCP and Azure, so I would expect GCP (Cloud Run behind a load balancer) to be the quickest.
-12. **Loose ends I know about:** I have not confirmed MFA is enabled on the `quest-deployer` user; its policy
-    allows `ec2:*` in `us-east-1`, which is broader than the stack needs; I have not run a real teardown; and
-    one combined build-and-test command hung for 300 seconds once and I could not reproduce it.
+12. **Loose ends I know about:** the `quest-deployer` policy allows `ec2:*` in `us-east-1`, which is broader
+    than the stack needs (MFA is enabled on that user, confirmed by the author on 2026-10-21; I could not
+    check it from the CLI); I have not run a real teardown; and one combined build-and-test command hung for
+    300 seconds once and I could not reproduce it.

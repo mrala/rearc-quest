@@ -8,7 +8,7 @@ Verified (observed in this repo or with local commands):
 - The app is Express on port 3000 (`src/000.js`). Each route shells out to a prebuilt Go binary: `/`→`bin/001`, `/aws`→`002`, `/docker`→`003`, `/loadbalanced`→`004`, `/tls`→`005`, `/secret_word`→`006`.
 - The binaries are Linux x86-64 ELF. The dev machine is darwin arm64, so they can't run locally. The image must be built for `linux/amd64`.
 - Local tooling (verified 2026-10-20): `docker` 29.8.2 (OrbStack, with working `linux/amd64` emulation), `terraform` 1.16.6 (asdf), `aws` 2.38.2, `node`. `bin/003` runs under amd64 emulation and prints the Docker success message.
-- **AWS identity:** the default profile is the **root user** via `aws login` (region `us-east-1`, account has root MFA on, 4 existing IAM users and 5 CDK roles that must not be touched). Root is not used for deploys. The scoped IAM user `quest-deployer` and customer-managed policy `QuestDeployer` were created from `infra/aws/bootstrap/` (see ADR-0009), and `aws login --profile quest-deployer` works and reports `user/quest-deployer`. MFA on that user is unconfirmed.
+- **AWS identity:** the default profile is the **root user** via `aws login` (region `us-east-1`, account has root MFA on, 4 existing IAM users and 5 CDK roles that must not be touched). Root is not used for deploys. The scoped IAM user `quest-deployer` and customer-managed policy `QuestDeployer` were created from `infra/aws/bootstrap/` (see ADR-0009), and `aws login --profile quest-deployer` works and reports `user/quest-deployer`. MFA on that user was confirmed by the author on 2026-10-21 (not checkable from the CLI).
 - `origin` is the private `https://github.com/mrala/rearc-quest.git` and all commits are pushed (2026-10-20). The vendor repo is `upstream`.
 - `.gitignore` and `package-lock.json` now exist. `express` was bumped from `~4.16.3` to `~4.22.3` (`npm audit`: 0 vulnerabilities, down from 7). Locally, on Node 26, the server starts and answers all six routes plus a 404. The bundled binaries cannot run on macOS (`cannot execute binary file`), so only the Express layer was tested.
 - **Header command injection confirmed locally:** a request header `X-Probe: $(touch /tmp/quest-inj)` created the file. The marker was removed. Do not repeat this against the public deployment.
@@ -176,7 +176,7 @@ docs/                       PLAN.md, adr/
 ## Open decisions
 
 - **Cloud and region:** AWS, `us-east-1` (set in the CLI config).
-- **Deployer credentials:** done. `aws login --profile quest-deployer` works and the first `plan` and `apply` needed no policy change. MFA on that user is unconfirmed.
+- **Deployer credentials:** done. `aws login --profile quest-deployer` works, the first `plan` and `apply` needed no policy change, and MFA on the user is enabled (confirmed by the author on 2026-10-21).
 - **Build location:** local `docker buildx --platform linux/amd64` through OrbStack emulation (verified working). CodeBuild is only a fallback if local builds prove too slow.
 - **Apply:** done 2026-10-20 (31 resources), billed until `make destroy`. Expected cost about $1.5 to $2/day (ALB, Fargate, IPv4); the budget alert goes to the address in `terraform.tfvars`.
 - **`/docker`:** decided 2026-10-20: keep Fargate, document 5 of 6 (ADR-0001).

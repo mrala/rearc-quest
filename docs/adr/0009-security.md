@@ -1,6 +1,6 @@
 # ADR-0009: Security
 
-Status: Accepted (2026-10-20). Implemented, with two gaps: task egress is still open, and MFA on `quest-deployer` is unconfirmed.
+Status: Accepted (2026-10-20). Implemented, with one gap: task egress is still open. MFA on `quest-deployer` is enabled (confirmed by the author on 2026-10-21).
 
 ## Context
 - The app is internet-facing. `src/000.js` runs `exec('bin/004 ' + JSON.stringify(req.headers))` (also `bin/005`, `bin/006`).
