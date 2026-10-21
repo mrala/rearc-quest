@@ -1,0 +1,20 @@
+# Node
+node_modules/
+
+# Terraform: state, plans, and variable files can hold the secret word and the TLS private key
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# macOS
+.DS_Store
