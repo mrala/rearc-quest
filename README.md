@@ -1,5 +1,7 @@
 # A quest in the clouds
 
+> **Submission:** my solution, deployment notes and AI-usage disclosure are in [SOLUTION.md](SOLUTION.md).
+
 ## Q. What is this quest?
 
 It is a fun way to assess your cloud skills. It is also a good representative sample of the work we do at Rearc. We've built the Quest webapp with node.js and golang. Your job, should you wish to accept it, is to complete a series of tasks to make it run in the cloud.
