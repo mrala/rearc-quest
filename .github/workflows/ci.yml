@@ -1,0 +1,64 @@
+# Checks only: this workflow never applies Terraform and holds no AWS credentials (ADR-0004).
+# It runs on pull requests and on pushes to master, because this repository is
+# often pushed straight to master and a pull-request-only trigger would never run.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform:
+    name: Terraform format and validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # Actions are pinned to commit SHAs; the comment names the release.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # .tool-versions is the single source of truth for the Terraform version.
+      - name: Read the pinned Terraform version
+        id: tf
+        run: echo "version=$(awk '$1 == "terraform" {print $2}' .tool-versions)" >> "$GITHUB_OUTPUT"
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ steps.tf.outputs.version }}
+          terraform_wrapper: false
+
+      - name: Format
+        run: terraform -chdir=infra/aws fmt -check -diff
+
+      # -backend=false: no state is touched. -lockfile=readonly: fail if the committed
+      # .terraform.lock.hcl does not already cover the providers.
+      - name: Init
+        run: terraform -chdir=infra/aws init -backend=false -input=false -lockfile=readonly
+
+      - name: Validate
+        run: terraform -chdir=infra/aws validate
+
+  image:
+    name: Build image and smoke test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Builds the linux/amd64 image, runs it read-only with all capabilities dropped,
+      # forges the headers an ALB adds, and requests the routes that work outside a
+      # cloud. "/" and "/aws" need a cloud, so they are skipped (see the Makefile).
+      - name: Build and smoke test
+        run: make smoke-local
