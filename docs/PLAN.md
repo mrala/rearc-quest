@@ -19,7 +19,7 @@ Verified (observed in this repo or with local commands):
   - `001`/`002` detect aws, ecs, eks, gcp, gke, azure, aks (IMDSv2 for EC2).
   - `006` reads `SECRET_WORD` and has no HTTP client.
   - `005` (`/tls`) criteria are not visible.
-- Checked on the web (2026-10-20): Node 20 is EOL and v22 and v24 are LTS (nodejs.org). The ALB ($0.0225/hr) and Fargate x86 rates match the AWS pricing pages. The Terraform AWS provider supports `aws login` credentials from v6.23.0; the S3 backend did not at the time (hashicorp/terraform-provider-aws#45316).
+- Checked on the web (2026-10-20): Node 20 is EOL and v22 and v24 are LTS (nodejs.org). The ALB ($0.0225/hr) and Fargate x86 rates match the AWS pricing pages. The Terraform AWS provider supports `aws login` credentials from v6.23.0. The S3 backend did not at the time (hashicorp/terraform-provider-aws#45316); hashicorp/terraform#37976 was later closed as completed on 2026-01-20 (via #38047), so that has probably changed. Not retested. Checked 2026-10-21: the NAT gateway rate is $0.045/hr (AWS VPC pricing page), and the Node.js release schedule has Node 26 LTS on 2026-10-28 and Node 24 in Maintenance LTS since 2026-10-20.
 
 Verified in the local container (`quest:local`, linux/amd64, 2026-10-20):
 - The image builds (Node 24.22.0, about 99 MB), runs as uid 1000, and `/docker` reports "running in a Docker container".
@@ -157,7 +157,7 @@ docs/                       PLAN.md, adr/
 | `/tls` likely checks HTTPS headers | Reads `X-Forwarded-Proto: https` (verified with a forged header) | ADR-0003 |
 | Two-deploy flow vs local-run flow (docs disagreed) | Unified decision flow in ADR-0005 | ADR-0005 |
 | Region taken from the CLI config | No region is configured; choose explicitly | ADR-0004, FG0 |
-| `aws login` assumed to work with Terraform | Provider needs `>= 6.23.0`; the S3 backend did not accept it, so use local state | ADR-0004 |
+| `aws login` assumed to work with Terraform | Provider needs `>= 6.23.0`; the S3 backend did not accept it at the time (since fixed upstream, #37976 closed 2026-01-20; not retested), so local state was used | ADR-0004 |
 | Deploy as the root user from `aws login` | Root is unrestricted; created a region- and prefix-scoped `quest-deployer` IAM user | ADR-0009 |
 | ALB assumed to be covered by the 750-hour free tier | Accounts since July 2025 get credits and a 6-month free plan; check the account | ADR-0008 |
 | Task egress limited to 443 | Binaries embed HTTP clients; start open, observe, then tighten | ADR-0009 |

@@ -8,20 +8,30 @@ The vendor challenge text stays in [`README.md`](README.md). This file is the su
 
 ## Status
 
-Live until 2026-10-27 (the `ttl` tag), after which I tear it down:
-`https://quest-1405847154.us-east-1.elb.amazonaws.com` (self-signed certificate, so use `curl -k` or
-accept the browser warning). Screenshots of every route are in [`docs/screenshots/`](docs/screenshots/).
+Live until 2026-10-27 (the `ttl` tag); I plan to tear it down on or after that date (see [Teardown](#teardown)).
+Base URL: `https://quest-1405847154.us-east-1.elb.amazonaws.com`. The certificate is self-signed, so use
+`curl -k` or accept the browser warning. Screenshots of every route are in [`docs/screenshots/`](docs/screenshots/).
 
-| # | Task | Check | Result |
-|---|---|---|---|
-| 1 | Git repository | n/a | Done. GPG-signed commits on top of the vendor history, in a private repository. |
-| 2 | Infrastructure as code | n/a | Done. Terraform, 31 resources, in `infra/aws/`. |
-| 3 | Run in a container in a public cloud | `/` and `/aws` | **Pass.** `/aws`: "You are running in AWS, Detected: ECS,AWS". |
-| 3 | ...in a Docker container | `/docker` | **Fail on Fargate.** See Findings. Passes on a real Docker runtime (local container). |
-| 4 | Read the secret word | `/` | **Pass.** `NostraCulpa`. |
-| 5 | Inject `SECRET_WORD` | `/secret_word` | **Pass.** Prints the same word. |
-| 6 | Load balancer | `/loadbalanced` | **Pass.** |
-| 7 | TLS | `/tls` | **Pass.** |
+**Try it** (needs only `curl` and this repository; the second command prints one PASS or FAIL row per route):
+
+```
+URL=https://quest-1405847154.us-east-1.elb.amazonaws.com
+curl -k "$URL/"                  # the secret word
+tests/smoke.sh -k "$URL"         # all six routes
+```
+
+Tasks 1 and 2 (a git repository, infrastructure as code) are done: GPG-signed commits on top of the vendor
+history in a private repository, and Terraform with 31 resources in `infra/aws/`. The README's five checks,
+plus `/aws`, which the app also serves:
+
+| README check | Route | Result |
+|---|---|---|
+| Public cloud and index page | `/` | **Pass.** Shows the secret word, `NostraCulpa`. |
+| (not in the README list) | `/aws` | **Pass.** "You are running in AWS, Detected: ECS,AWS". |
+| Docker | `/docker` | **Fail on Fargate.** See Findings. Passes on a real Docker runtime (the local container). |
+| Secret word | `/secret_word` | **Pass.** Prints the same word. |
+| Load balancer | `/loadbalanced` | **Pass.** |
+| TLS | `/tls` | **Pass.** |
 
 Not done: a second cloud (extra credit) and a teardown run. See the end of this file.
 
@@ -56,7 +66,7 @@ flowchart LR
 
 ```
 Dockerfile, .dockerignore   image (nothing cloud-specific)
-src/, bin/, package*.json   the vendor app, unchanged except for the express bump below
+src/, bin/, package*.json   the vendor app (src/ and bin/ are identical to the vendor repository)
 infra/aws/                  Terraform module and the AWS Makefile
 infra/aws/bootstrap/        one-time creation of the scoped IAM user that Terraform runs as
 infra/contract.md           inputs and outputs any cloud root must provide
@@ -68,8 +78,8 @@ docs/PLAN.md                the plan, findings and a log of what I got wrong
 docs/screenshots/           one screenshot per route
 ```
 
-The only change to the vendor app is `express` `~4.16.3` to `~4.22.3` in `package.json`, which takes
-`npm audit` from 7 findings (4 high) to 0. `src/000.js` and the binaries are untouched.
+The only changes to the vendor app are `express` `~4.16.3` to `~4.22.3` in `package.json` (7 `npm audit` findings,
+4 high, down to 0) and a new `package-lock.json`. `src/` and `bin/` are identical to the vendor repository.
 
 ## Deploying
 
@@ -97,8 +107,8 @@ AWS CLI 2.32 or later (for `aws login`), and an AWS account.
    this takes two deploys. Put `secret_word = "..."` in `terraform.tfvars`, run `make apply`, then
    `EXPECT_SECRET_WORD=<word> make smoke`. Each rollout takes 3 to 4 minutes.
 5. **Local checks, no AWS needed.** `make smoke-local` builds the image, runs it with the same restrictions as
-   production, forges the headers an ALB would add, and runs the six checks (it skips `/` and `/aws`, which
-   need a cloud).
+   production, forges the headers an ALB would add, and runs the four checks that work outside a cloud
+   (it skips `/` and `/aws`, which need a cloud).
 
 ### Teardown
 
@@ -107,6 +117,9 @@ make destroy        # shows the AWS identity, then Terraform asks for confirmati
 make verify-clean   # lists anything still tagged project=quest, and queries each service; exits 1 if any is left
 infra/aws/bootstrap/bootstrap.sh destroy   # optional: remove the deploy user and its policy
 ```
+
+Sessions from `aws login` last up to 12 hours. If `make destroy` reports no AWS session, run
+`aws login --profile quest-deployer --region us-east-1` first.
 
 **I have not run `make destroy` yet.** `verify-clean` is tested against a clean account and against a stubbed
 leftover, not against a real teardown. Terraform state is local and holds the TLS private key and the secret
@@ -120,8 +133,8 @@ Things I learned by running the system, several of which contradicted what I exp
    it; Fargate (containerd) does not. The same image passes `/docker` on a real Docker runtime, locally. The
    check's own message says "this might be OK as many cloud container orchestration platforms do not use
    Docker". I did not create `/.dockerenv` in the image to make it pass, because that would defeat the
-   check. ECS on EC2 would pass, and I decided against it (see ADR-0001) because it adds instances, an
-   Auto Scaling group and an instance role for one route.
+   check. ECS on EC2 should pass, because a Docker runtime creates that file, but I did not try it. I decided
+   against it (see ADR-0001) because it adds instances, an Auto Scaling group and an instance role for one route.
 2. **`/` crashed on the first deploy.** `bin/001` is a Go program that fetches the secret word from
    `https://www.rearc.io/...` and verifies the certificate against the system CA store. `node:slim` ships
    none, so it panicked with `x509: certificate signed by unknown authority`. The fix is installing
@@ -144,7 +157,9 @@ Things I learned by running the system, several of which contradicted what I exp
    confirmed it on the app running locally on my Mac with a harmless `touch`, and did not test it against the public
    deployment. I left the vendor app unmodified because the quest scores its behaviour, and contained the
    risk instead: non-root, read-only filesystem, no capabilities, no task role, ingress only from the ALB.
-   The proper fix, `execFile` with an argument array, is the first item below.
+   That limits persistence and blast radius, not what injected code can do while it runs: it can read the
+   task's environment (including `SECRET_WORD`) and, because egress is open, make outbound connections. The
+   proper fix, `execFile` with an argument array, is the second item below.
 9. **Security checks on the deployment:** neither task public IP answered on port 3000 within 6 s; HTTP
    returned 301 to HTTPS; the listener negotiated TLS 1.3 with the intended policy.
 10. **CI caught a portability bug my local checks missed.** The first CI run failed at `terraform validate`:
@@ -158,7 +173,7 @@ Things I learned by running the system, several of which contradicted what I exp
 
 Ten ADRs in [`docs/adr/`](docs/adr/), each with the alternatives, tradeoffs, risks and mitigations. In
 short: ECS Fargate over EC2, EKS and App Runner (0001); no database, because the app has none (0002, 0006);
-public subnets without NAT, to avoid roughly $32 a month for a demo (0003); a Makefile and manual apply, with
+public subnets without NAT, to avoid about $32 a month per NAT gateway ($0.045 an hour on the AWS pricing page, plus data processing) for a demo (0003); a Makefile and manual apply, with
 a check-only CI workflow, instead of a deploy pipeline (0004); one feature group per verifiable route (0005); a `ttl` tag and a single
 teardown command (0007); smallest Fargate size and a budget alert (0008); containment instead of patching the
 vendor app (0009); and a portable contract with per-cloud roots, built only for AWS so far (0010).
@@ -177,22 +192,18 @@ cost allocation tag, which takes about a day. Budgets alert but do not stop spen
 ## Using AI
 
 I used an AI coding assistant (Claude, `anthropic/claude-sonnet-5-5`, in the `omp` command-line agent) for
-most of this. It read files, ran commands in my shell, wrote the code and the docs, and made the commits.
-I made the decisions at the points where they mattered and reviewed the results.
+most of this. It read files, ran commands in my shell, wrote the code and the docs, and made the commits. I
+chose between the options it laid out, for example keeping Fargate after `/docker` failed, using a scoped IAM
+user instead of the root user, and bumping express, and I approved each `apply` and each `push`.
 
-**Prompts, in order (abridged):**
-
-1. "Take a look at the README and come up with a plan to complete the challenge."
-2. "Produce ADRs for: Compute, Database, Networking, CI/CD, Feature group identification, Database seeding /
-   replication, Teardown, Cost controls, Security. For each: Decision, Alternatives considered, Tradeoffs,
-   Risks, Mitigations."
-3. "Identify issues that AI may have missed or gotten wrong", then "Update the docs", then "Is there anything
-   else that was missed?" (each followed by a round of fixes).
-4. "How could we make this more cloud provider agnostic?"
-5. Setup steps: bump and test express, create a private repo, "Set up a scoped identity first", "Verify the
-   git configuration, including identities", rebase to re-author and sign the commits, push.
-6. "Let's start on the terraform", then approval to apply with a budget email and a `ttl`.
-7. "Start with screenshots", then "Go ahead and write it" (this file).
+**Prompts (abridged, in order).** "Take a look at the README and come up with a plan to complete the
+challenge." Then "Produce ADRs for: Compute, Database, Networking, CI/CD, Feature group identification,
+Database seeding / replication, Teardown, Cost controls, Security", with Decision, Alternatives considered,
+Tradeoffs, Risks and Mitigations for each. Then two review rounds, "Identify issues that AI may have missed or
+gotten wrong" and "Is there anything else that was missed?", each followed by "Update the docs". Then "How
+could we make this more cloud provider agnostic?", and step by step: the scoped identity, the repository and
+signing setup, "Let's start on the terraform", the apply (with a budget email and a `ttl`), screenshots, this
+file, doc fixes, the CI workflow, a pull request and its merge, and an accuracy review of this file.
 
 **What it did well.** It inspected the six bundled binaries with `strings` before planning, which showed they
 are cloud-aware and what `/docker` tests for. It ran experiments instead of guessing: forged headers against a
@@ -200,25 +211,23 @@ local container to learn what `/tls` and `/loadbalanced` read, a stop-time measu
 problem, and an IAM policy simulator run (39 checks) before the first `apply`. It marked guesses as
 `[INFERENCE]`, which let a later review find them.
 
-**What it got wrong.** The first draft of the plan was wrong in several places, and it took two review
-rounds to catch them. The full list is in the corrections log in `docs/PLAN.md`; the main ones:
+**What it got wrong.** The first plan was wrong in several places, and it took two review rounds and the deploy
+to catch them. The full list is the corrections log in `docs/PLAN.md`; the main ones:
 
-- It said `aws` was configured. There was no session; later it turned out to be the **root user**, which I
-  replaced with a scoped IAM user.
-- It planned `npm ci` with no lockfile, and `node:20`, which had reached end of life.
-- It described the injection wrongly (a `'` in a header). The real vectors are `$(...)` and backticks.
-- It chose Fargate without a caveat about `/docker`. The first review round caught it and turned it into an
-  early test, which then failed on the first deploy.
-- It assumed `node:slim` includes CA certificates. It does not, and only a real deploy exposed it.
-- It restricted task egress to port 443 in the first design, though the binaries make their own outbound
-  calls, and it suggested VPC flow logs to observe them even though the deployer policy it later wrote
-  could not create the role flow logs need.
-- It assumed the region would come from the CLI config. None was set for the profile in use at the time.
-- Operational slips: a `set -e` it ran stayed active in the shell and cut a test batch short, and it ran
-  `gpg` from a non-interactive shell, which used one of the YubiKey's three PIN attempts before I cached the
-  PIN. It stopped there instead of retrying.
-- Its simulation of the pipeline passed on my Mac and the real run failed: the simulation ran on the same
-  platform as the lock file, so only the runner exposed the missing `linux_amd64` checksums.
+- It said `aws` was configured (there was no session, and later it turned out to be the **root user**, which
+  I replaced with a scoped IAM user), assumed a region was set, planned `npm ci` with no lockfile and
+  `node:20` (end of life), and described the injection wrongly (a `'` in a header; the real vectors are
+  `$(...)` and backticks).
+- It chose Fargate with no caveat about `/docker`. A review turned that into an early test, which failed on
+  the first deploy.
+- It assumed `node:slim` has CA certificates (it does not, and only the deploy exposed it) and that task
+  egress could be limited to port 443 (the binaries make their own outbound calls). It also suggested VPC flow
+  logs to see those calls, though the deployer policy it later wrote could not create the role they need.
+- Its pipeline simulation passed on my Mac and the real run failed: both used the same platform as the lock
+  file, so only the runner exposed the missing `linux_amd64` checksums.
+- Operational slips: a `set -e` stayed active in the shell and cut a test batch short, and it ran `gpg` from a
+  non-interactive shell, which used one of the YubiKey's three PIN attempts before I cached the PIN. It
+  stopped there instead of retrying.
 
 **What I would not trust without checking:** anything in the ADRs marked `[INFERENCE]` that has no "verified"
 note next to it, the cost figures, and Terraform argument names. The module passes `terraform validate`
@@ -226,7 +235,18 @@ and `plan`, and was applied successfully, but a plan is not proof of behaviour. 
 
 ## Given more time, I would improve
 
-In rough order of value:
+Three shortcomings matter most, and each has a reason:
+
+- **`/docker` fails (5 of 6).** I chose not to run ECS on EC2 for one route, and not to fake `/.dockerenv`.
+  The cost is one failed check.
+- **The app's command injection is unfixed.** The quest scores the supplied app, so I contained the risk
+  (non-root, read-only filesystem, no capabilities, ingress only from the ALB) instead of patching it. It is
+  the worst problem in the repository.
+- **The network and TLS posture is demo-grade.** Tasks have public IPs, egress is open and the certificate is
+  self-signed, because NAT or endpoints cost money for a one-week demo, I had no domain, and I did not know
+  what the binaries call outbound.
+
+The full list, in rough order of value:
 
 1. **Get to six of six on `/docker`.** Run the tasks on ECS on EC2 (a real Docker runtime), or add it behind
    a `compute` variable so both paths are demonstrable. It is more to operate (AMI, patching, capacity),
@@ -247,13 +267,16 @@ In rough order of value:
    would add OIDC-based deploys with a protected environment and manual approval, so that applies do not
    depend on one person's laptop.
 7. **Remote state with locking.** State is local and holds the TLS private key and the secret word in
-   plaintext. I would use an encrypted S3 backend, and move the secret word to Secrets Manager. When I
-   checked, the S3 backend did not accept `aws login` credentials, so this needs a workaround.
+   plaintext, and the word is also readable in the ECS task definition. I would use an encrypted S3 backend,
+   and move the secret word to Secrets Manager. When I started, the S3 backend did not accept `aws login`
+   credentials; that issue (hashicorp/terraform#37976) was closed as completed in January 2026, so it probably
+   works now, but I did not retest it.
 8. **Observability and resilience.** CloudWatch alarms on unhealthy targets and 5xx, ALB access logs, autoscaling,
    and deployment alarms. Today a failed task only shows in the ECS events.
 9. **Cost.** Tag-based budget filtering, and check the real bill rather than my estimate.
 10. **Supply chain.** Pin the base image by digest, add a scheduled `npm audit` and image scan, and move to
-    Node 26 when it becomes LTS (scheduled for 28 October 2026).
+    Node 26 when it becomes LTS (28 October 2026 on the Node.js release schedule). Node 24, which the image
+    uses, entered Maintenance LTS on 20 October 2026 and is supported until April 2028.
 11. **A second cloud (extra credit).** `infra/contract.md` and the cloud-neutral smoke test exist for this, but
     the contract was drawn from one cloud and may need revising. The check binaries have separate success
     paths for GCP and Azure, so I would expect GCP (Cloud Run behind a load balancer) to be the quickest.
