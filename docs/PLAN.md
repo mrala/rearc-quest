@@ -171,6 +171,7 @@ docs/                       PLAN.md, adr/
 | Local smoke test treated as enough for `/` | `/` only reaches the TLS fetch inside a cloud; only a real deploy catches it | tests/smoke.sh |
 | `/docker` on Fargate "may fail" | Fails as predicted: Fargate has no `/.dockerenv` | ADR-0001 |
 | Cloud detection assumed possibly slow on Fargate | Fast there (about 0.15 to 1.8 s); the 25 s was local only | ADR-0003 |
+| A clean-clone simulation proves the CI jobs work | It passed on my Mac and the first real run failed: the lock file only had `darwin_arm64` checksums and the runner is `linux_amd64`. Fixed with four platforms | ADR-0004 |
 
 ## Open decisions
 

@@ -23,7 +23,7 @@ accept the browser warning). Screenshots of every route are in [`docs/screenshot
 | 6 | Load balancer | `/loadbalanced` | **Pass.** |
 | 7 | TLS | `/tls` | **Pass.** |
 
-Not done: a second cloud (extra credit), a CI workflow, and a teardown run. See the end of this file.
+Not done: a second cloud (extra credit) and a teardown run. See the end of this file.
 
 ## Architecture
 
@@ -62,6 +62,7 @@ infra/aws/bootstrap/        one-time creation of the scoped IAM user that Terraf
 infra/contract.md           inputs and outputs any cloud root must provide
 tests/smoke.sh              cloud-neutral acceptance test: base URL in, six checks out
 Makefile                    same verbs on every cloud: build, smoke, plan, apply, destroy ...
+.github/workflows/ci.yml    CI: Terraform fmt and validate, image build and local smoke test (checks only)
 docs/adr/                   ten decision records
 docs/PLAN.md                the plan, findings and a log of what I got wrong
 docs/screenshots/           one screenshot per route
@@ -146,13 +147,19 @@ Things I learned by running the system, several of which contradicted what I exp
    The proper fix, `execFile` with an argument array, is the first item below.
 9. **Security checks on the deployment:** neither task public IP answered on port 3000 within 6 s; HTTP
    returned 301 to HTTPS; the listener negotiated TLS 1.3 with the intended policy.
+10. **CI caught a portability bug my local checks missed.** The first CI run failed at `terraform validate`:
+    the provider lock file held checksums only for `darwin_arm64`, where I created it, and the runner is
+    `linux_amd64`. My clean-clone check had passed because it ran on the same platform as the lock file. I
+    reproduced the failure with a `linux/amd64` Terraform container, recorded checksums for four platforms, and
+    the second run was green (both jobs, 22 and 34 s). Also, `/loadbalanced` takes 0.02 s on the runner
+    against about 5 s on my Mac, so that delay is specific to my machine.
 
 ## Decisions
 
 Ten ADRs in [`docs/adr/`](docs/adr/), each with the alternatives, tradeoffs, risks and mitigations. In
 short: ECS Fargate over EC2, EKS and App Runner (0001); no database, because the app has none (0002, 0006);
-public subnets without NAT, to avoid roughly $32 a month for a demo (0003); a Makefile and manual apply
-instead of a deploy pipeline (0004); one feature group per verifiable route (0005); a `ttl` tag and a single
+public subnets without NAT, to avoid roughly $32 a month for a demo (0003); a Makefile and manual apply, with
+a check-only CI workflow, instead of a deploy pipeline (0004); one feature group per verifiable route (0005); a `ttl` tag and a single
 teardown command (0007); smallest Fargate size and a budget alert (0008); containment instead of patching the
 vendor app (0009); and a portable contract with per-cloud roots, built only for AWS so far (0010).
 
@@ -210,6 +217,8 @@ rounds to catch them. The full list is in the corrections log in `docs/PLAN.md`;
 - Operational slips: a `set -e` it ran stayed active in the shell and cut a test batch short, and it ran
   `gpg` from a non-interactive shell, which used one of the YubiKey's three PIN attempts before I cached the
   PIN. It stopped there instead of retrying.
+- Its simulation of the pipeline passed on my Mac and the real run failed: the simulation ran on the same
+  platform as the lock file, so only the runner exposed the missing `linux_amd64` checksums.
 
 **What I would not trust without checking:** anything in the ADRs marked `[INFERENCE]` that has no "verified"
 note next to it, the cost figures, and Terraform argument names. The module passes `terraform validate`
@@ -234,9 +243,9 @@ In rough order of value:
 5. **A real domain and an ACM-issued certificate.** The self-signed certificate means every client needs `-k`
    and nothing is verified end to end. A domain also lets me test whether `/loadbalanced` still passes with a
    non-`elb.amazonaws.com` host, which I only tested with a forged `localhost` host.
-6. **A deploy pipeline.** ADR-0004 designed a GitHub Actions workflow (format, validate, build, local smoke
-   test on pull requests, and OIDC-based deploys) but **I did not write it**. The Makefile is the only
-   automation, and applies are manual.
+6. **A deploy pipeline.** CI checks only (format, validate, build, local smoke test) and never applies. I
+   would add OIDC-based deploys with a protected environment and manual approval, so that applies do not
+   depend on one person's laptop.
 7. **Remote state with locking.** State is local and holds the TLS private key and the secret word in
    plaintext. I would use an encrypted S3 backend, and move the secret word to Secrets Manager. When I
    checked, the S3 backend did not accept `aws login` credentials, so this needs a workaround.
