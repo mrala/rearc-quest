@@ -74,10 +74,11 @@ Inferred, not verified:
    - Output the ALB DNS name.
    - Run `terraform validate` and `plan`. Several resource arguments and the TLS policy name come from memory.
    - Write `infra/contract.md` (ADR-0010): the inputs (`image`, `image_tag`, `secret_word`, `replicas`, `tags`) and outputs (`url`, `lb_hostname`) every cloud root must provide. Treat it as provisional until a second cloud exists.
-   - Add a `Makefile` with a `CLOUD` variable (default `aws`) dispatching `plan`, `apply`, `smoke`, and `destroy` to `infra/$(CLOUD)`.
-   - Write `tests/smoke.sh <BASE_URL>`: requests all six endpoints and prints each result, with no cloud-specific logic.
+   - **Done:** `Makefile` with `CLOUD` (default `aws`). `build`, `run-local`, `smoke-local` and `smoke` work; `plan`, `apply`, `push`, `destroy` and `verify-clean` delegate to `infra/$(CLOUD)/Makefile`, which does not exist yet (write it with the Terraform, including the `destroy` identity confirmation from ADR-0007). Images are tagged with the git SHA (`-dirty` if uncommitted), never `latest`.
+   - **Done:** `tests/smoke.sh [-k] [-H hdr]... [-s route]... [-t secs] BASE_URL` checks all six routes in parallel, prints one row per route, and exits non-zero on any failure. `EXPECT_SECRET_WORD` also checks `/secret_word`. The success text of `/` and `/aws` is unknown, so they pass when they return anything other than the "not in a cloud" text.
+   - `make smoke-local` runs the hardened image with forged ALB headers and skips `/` and `/aws` (they need a cloud): 4 passed, 0 failed, 2 skipped, about 8 s. Tested failure paths: missing headers, wrong expected word, dead port, bad arguments.
 5. **Verify** through the ALB DNS name, using `curl -k`:
-   - Run `tests/smoke.sh https://<alb-dns>` for all six endpoints; the manual checks below cover what it cannot.
+   - Run `make smoke` (or `tests/smoke.sh -k https://<alb-dns>`) for all six endpoints; the manual checks below cover what it cannot.
    - Health-check path: use one of the fast routes (`/docker`, `/tls`, `/secret_word`; about 50 ms locally), not `/` (25 s) or `/loadbalanced` (5 s). Re-measure on AWS.
    - `/` shows the secret word; `/aws` output is recorded.
    - `/docker`, `/secret_word`, `/loadbalanced` and `/tls` each report success. Record any that don't, with their output.
@@ -113,8 +114,8 @@ infra/
   contract.md               inputs/outputs every cloud must implement
   aws/                      implemented now
   gcp/                      optional, later
-tests/smoke.sh              takes BASE_URL, checks all six endpoints
-Makefile                    CLOUD=aws by default
+tests/smoke.sh              BASE_URL in, six checks out (done)
+Makefile                    CLOUD=aws by default (done; infra/aws/Makefile pending)
 docs/                       PLAN.md, adr/
 ```
 
