@@ -1,6 +1,6 @@
 # ADR-0003: Networking
 
-Status: Proposed
+Status: Accepted (2026-10-20). Implemented and verified on Fargate behind a real ALB.
 
 ## Context
 Requirements: a load balancer in front of the app (task 6), HTTPS with locally generated certs allowed (task 7), a load-balanced check at `/loadbalanced`, and a TLS check at `/tls`.
@@ -33,13 +33,13 @@ Observed in `strings` of the supplied binaries:
 - (-) Traffic ALB to task is plain HTTP inside the VPC.
 
 ## Risks
-1. `/tls` depends on `X-Forwarded-Proto: https` reaching the app; confirm on a real ALB.
-2. `/loadbalanced` needs ALB-style headers (`X-Amzn-Trace-Id` and others); confirm on a real ALB.
-3. A task with an open security group is reachable directly.
-4. Health checks flap if the health-check path is slow. Locally `/` takes about 25 s and `/loadbalanced` about 5 s (cloud detection); `/docker`, `/tls` and `/secret_word` take under 100 ms.
+1. `/tls` depends on `X-Forwarded-Proto: https` reaching the app. **Verified 2026-10-20:** `/tls` passes through the real ALB.
+2. `/loadbalanced` needs ALB-style headers (`X-Amzn-Trace-Id` and others). **Verified 2026-10-20:** passes through the real ALB.
+3. A task with an open security group is reachable directly. **Verified 2026-10-20:** neither task public IP answered on port 3000 within 6 s.
+4. Health checks flap if the health-check path is slow. Locally `/` takes about 25 s and `/loadbalanced` about 5 s (cloud detection). On Fargate `/` takes 0.5 to 1.8 s and the rest about 0.1 to 0.2 s; both tasks are healthy on `/tls`.
 
 ## Mitigations
-1. Request `/tls` through the ALB right after the first apply; if it fails, inspect the output and record the finding in the README rather than guess.
-2. Use the ALB DNS name for all checks; do not add a domain until `/loadbalanced` is confirmed with it.
-3. Task SG has no CIDR ingress rules, only an SG reference to the ALB. Confirm by requesting the task public IP directly and expecting a timeout.
-4. Use a fast route as the health-check path, with a generous interval and timeout and a healthy threshold of 2. Re-measure each route on the first deploy.
+1. Done 2026-10-20: `/tls` requested through the ALB right after the first apply; it passed.
+2. Done: every check used the ALB DNS name, and no domain was added. A real domain remains untested.
+3. Done: the task security group has no CIDR ingress rules, only a reference to the ALB's security group, and the direct-access test timed out as intended.
+4. Done: `/tls` is the health-check path with a 30 s interval, 10 s timeout and a healthy threshold of 2.

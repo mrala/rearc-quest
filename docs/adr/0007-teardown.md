@@ -1,6 +1,6 @@
 # ADR-0007: Teardown
 
-Status: Proposed
+Status: Accepted (2026-10-20). Implemented in `infra/aws/Makefile`; a real teardown has **not** been run yet.
 
 ## Context
 
@@ -14,7 +14,7 @@ The README says we need not host the deployment long, and recommends tearing dow
 - All resources carry tags `project=quest` and `ttl=<date>`, set via the provider's `default_tags`.
 - A `make verify-clean` target lists any remaining resources with the `project=quest` tag (Resource Groups Tagging API).
 - Screenshots of `/` and each check are captured **before** destroy.
-- If ADR-0001 falls back to ECS on EC2, destroy also covers the Auto Scaling group, launch template, capacity provider, and instances; Terraform dependency order handles these, but confirm the instances are gone.
+- ECS on EC2 was not chosen (ADR-0001), so there is no Auto Scaling group, launch template or instance to confirm gone; the stack is Fargate tasks, an ALB and networking.
 - `make verify-clean` is a safety net, not proof: the tagging API does not return every resource type and can lag. After destroy, also list by hand: load balancers, target groups, ECR repos, CloudWatch log groups, ACM certificates, ENIs, and the VPC.
 
 ## Alternatives considered
@@ -38,10 +38,12 @@ The README says we need not host the deployment long, and recommends tearing dow
 2. Destroy is run against the wrong account or region.
 3. Orphans keep billing (ALB, Elastic IPs, log groups).
 4. `verify-clean` misses a resource that the tagging API does not report, or that has not appeared yet.
+5. The teardown path itself has never run, so a dependency or ENI problem would only show on the first attempt.
 
 ## Mitigations
 
 1. Fargate service `desired_count` is reduced as part of destroy order by Terraform dependencies; rerun `destroy` if an ENI delays release.
-2. `make destroy` prints `aws sts get-caller-identity` and the region, and requires confirmation.
+2. `make destroy` goes through `infra/aws/Makefile`'s `guard`, which prints the AWS identity and region and refuses to run as the root user; Terraform then asks for confirmation (`AUTO_APPROVE=1` skips it).
 3. Run `make verify-clean` after destroy and check Cost Explorer the next day. Set the `ttl` tag as a reminder.
 4. Run the manual checklist above (ELB, target groups, ECR, log groups, ACM, ENIs, VPC) in the console or CLI for the chosen region, and recheck in Cost Explorer the next day.
+5. Run `make destroy` and `make verify-clean` once before the `ttl` date and record the result here. `verify-clean` has only been tested against a clean account and a stubbed leftover.
