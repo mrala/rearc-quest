@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars (gitignored) and uncomment what you need. Never commit real values.
+
+# Leave unset on the first deploy. Read the word from the deployed index page, set it, and apply again.
+# secret_word = ""
+
+# Email for AWS Budget alerts. Leave empty to skip the budget.
+# budget_email = "you@example.com"
+
+# Tag every resource with a date after which the stack should be destroyed.
+# ttl = "2026-10-27"
