@@ -1,6 +1,6 @@
 # ADR-0008: Cost controls
 
-Status: Proposed
+Status: Accepted (2026-10-20). Implemented (smallest Fargate size, two tasks, 7-day logs, keep-5 images, budget, `ttl` tag); real spend has not been measured.
 
 ## Context
 The quest says it should be achievable at zero or near-zero cost. ALB, Fargate (or EC2), public IPv4 addresses, and CloudWatch Logs bill by usage. Per the AWS ELB pricing page, accounts created since July 15, 2025 get up to $200 in credits and a 6-month "free plan" instead of the older 750 ALB hours; older accounts may still have the 750 hours. Check which applies to your account. I did not check whether the free plan restricts any service we need.

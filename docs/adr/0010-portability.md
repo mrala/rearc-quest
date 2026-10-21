@@ -1,6 +1,6 @@
 # ADR-0010: Cloud portability
 
-Status: Proposed
+Status: Accepted (2026-10-20). The contract (`infra/contract.md`) and cloud-neutral smoke test exist; only AWS is implemented.
 
 ## Context
 - The deliverable is AWS first. The README gives extra credit for working entries on more than one cloud, so a second cloud (GCP or Azure) is plausible.

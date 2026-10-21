@@ -1,6 +1,6 @@
 # ADR-0006: Database seeding / replication
 
-Status: Proposed (depends on ADR-0002)
+Status: Accepted (2026-10-20). Depends on ADR-0002; nothing to seed or replicate.
 
 ## Context
 ADR-0002 decides there is no database. Seeding and replication therefore have no data to operate on. The only per-environment value is `SECRET_WORD`, which is configuration, and the service's availability comes from running multiple stateless tasks behind the ALB.

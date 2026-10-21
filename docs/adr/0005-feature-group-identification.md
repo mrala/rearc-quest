@@ -1,6 +1,6 @@
 # ADR-0005: Feature group identification
 
-Status: Proposed
+Status: Accepted (2026-10-20). Followed in order; the outcome of each group is in the table and in `docs/PLAN.md`.
 
 ## Context
 The README lists seven tasks, and five have a verification endpoint. `src/000.js` also exposes `/aws` (`bin/002`), which the README checklist does not mention.

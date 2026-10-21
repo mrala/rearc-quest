@@ -1,6 +1,6 @@
 # Quest Plan: AWS, Terraform, ECS Fargate
 
-Status: Proposed. Decisions are recorded in `docs/adr/0001` to `0010`. This revision incorporates a self-review of the first draft (see "Corrections log"), a portability decision (ADR-0010), and a second round of web-checked corrections.
+Status: Executed on AWS on 2026-10-20 (5 of 6 checks pass; `/docker` fails on Fargate and is accepted). Remaining: teardown by 2026-10-27. Decisions are recorded in `docs/adr/0001` to `0010`, whose statuses reflect what was built and tested. This document began as a plan; it now also holds the findings and a log of what had to be corrected (see "Corrections log").
 
 ## Findings
 
@@ -8,8 +8,8 @@ Verified (observed in this repo or with local commands):
 - The app is Express on port 3000 (`src/000.js`). Each route shells out to a prebuilt Go binary: `/`→`bin/001`, `/aws`→`002`, `/docker`→`003`, `/loadbalanced`→`004`, `/tls`→`005`, `/secret_word`→`006`.
 - The binaries are Linux x86-64 ELF. The dev machine is darwin arm64, so they can't run locally. The image must be built for `linux/amd64`.
 - Local tooling (verified 2026-10-20): `docker` 29.8.2 (OrbStack, with working `linux/amd64` emulation), `terraform` 1.16.6 (asdf), `aws` 2.38.2, `node`. `bin/003` runs under amd64 emulation and prints the Docker success message.
-- **AWS identity:** the default profile is the **root user** via `aws login` (region `us-east-1`, account has root MFA on, 4 existing IAM users and 5 CDK roles that must not be touched). Root is not used for deploys. A scoped IAM user `quest-deployer` and customer-managed policy `QuestDeployer` were created from `infra/aws/bootstrap/` (see ADR-0009). **Pending: console password, MFA, and `aws login --profile quest-deployer` (manual).**
-- `origin` is now the private `https://github.com/mrala/rearc-quest.git` (created, empty, nothing pushed). The vendor repo is `upstream`.
+- **AWS identity:** the default profile is the **root user** via `aws login` (region `us-east-1`, account has root MFA on, 4 existing IAM users and 5 CDK roles that must not be touched). Root is not used for deploys. The scoped IAM user `quest-deployer` and customer-managed policy `QuestDeployer` were created from `infra/aws/bootstrap/` (see ADR-0009), and `aws login --profile quest-deployer` works and reports `user/quest-deployer`. MFA on that user is unconfirmed.
+- `origin` is the private `https://github.com/mrala/rearc-quest.git` and all commits are pushed (2026-10-20). The vendor repo is `upstream`.
 - `.gitignore` and `package-lock.json` now exist. `express` was bumped from `~4.16.3` to `~4.22.3` (`npm audit`: 0 vulnerabilities, down from 7). Locally, on Node 26, the server starts and answers all six routes plus a 404. The bundled binaries cannot run on macOS (`cannot execute binary file`), so only the Express layer was tested.
 - **Header command injection confirmed locally:** a request header `X-Probe: $(touch /tmp/quest-inj)` created the file. The marker was removed. Do not repeat this against the public deployment.
 - The app has no database dependency in `package.json` or `src/000.js`. `SECRET_WORD` is an env var.
@@ -78,7 +78,7 @@ Inferred, not verified:
    - At least 2 tasks so `/loadbalanced` shows real balancing.
    - AWS Budget (only when `budget_email` is set; it covers the whole account because tag filtering needs the cost allocation tag activated), tags (`project`, `managed_by`, optional `ttl`), 7-day log retention, ECR lifecycle policy (keep 5 images).
    - Output the ALB DNS name.
-   - **Done, not applied:** the module (`infra/aws/*.tf`, 30 resources), `infra/aws/Makefile` and `infra/contract.md` are written. `terraform validate` passes on aws provider 6.69.1 and tls 4.4.1 (lock file committed). `terraform plan` as `quest-deployer` shows 30 to add, 0 to change, 0 to destroy. The TLS policy `ELBSecurityPolicy-TLS13-1-2-2021-06` exists (`aws elbv2 describe-ssl-policies`). 39 permission checks in the IAM simulator, covering every non-wildcard action Terraform needs (IAM, PassRole, service-linked roles, Budgets) plus spot checks of the wildcard services, are all allowed. A plan makes only read calls and the simulator proves allow/deny rules, so the first `apply` can still fail on an API-level error.
+   - **Done and applied 2026-10-20:** the module (`infra/aws/*.tf`, 31 resources), `infra/aws/Makefile` and `infra/contract.md`. Before the apply, `terraform validate` passed on aws provider 6.69.1 and tls 4.4.1 (lock file committed), `terraform plan` as `quest-deployer` showed the expected resources, the TLS policy `ELBSecurityPolicy-TLS13-1-2-2021-06` existed, and 39 IAM-simulator checks covering every non-wildcard action Terraform needs were all allowed. The apply then ran with no AccessDenied (see Findings).
    - `make apply` has to create the ECR repository first (`-target`), push the image, then apply the rest, because the service starts tasks as soon as it exists. The Makefile refuses to run as root and prints the identity and region first.
    - `make verify-clean` queries the tagging API and each service, excludes the deployer's own user and policy, and exits 1 if anything is left. Tested clean, and against a stubbed leftover.
    - **Done:** `Makefile` with `CLOUD` (default `aws`). `build`, `run-local`, `smoke-local` and `smoke` work; `plan`, `apply`, `push`, `destroy` and `verify-clean` delegate to `infra/$(CLOUD)/Makefile`. `apply` and `push` build first. Images are tagged with the git SHA (`-dirty` if uncommitted), never `latest`.
@@ -103,7 +103,7 @@ Inferred, not verified:
 | # | Group | Verification | Depends on |
 |---|---|---|---|
 | FG0 | Prerequisites | private repo, `.gitignore`, lockfile, scoped `quest-deployer` identity, Docker, Terraform | none |
-| FG1 | Packaging | local container serves all routes (**done 2026-10-20**, uncommitted) | FG0 |
+| FG1 | Packaging | local container serves all routes (**done 2026-10-20**) | FG0 |
 | FG2 | Public cloud + index page | `/` shows the secret word; `/aws` | FG1 |
 | FG3 | Containerized runtime | `/docker`: fails on Fargate, accepted (ADR-0001) | FG2 |
 | FG4 | Secret word injection | `/secret_word` | FG2 |
@@ -171,11 +171,12 @@ docs/                       PLAN.md, adr/
 | Local smoke test treated as enough for `/` | `/` only reaches the TLS fetch inside a cloud; only a real deploy catches it | tests/smoke.sh |
 | `/docker` on Fargate "may fail" | Fails as predicted: Fargate has no `/.dockerenv` | ADR-0001 |
 | Cloud detection assumed possibly slow on Fargate | Fast there (about 0.15 to 1.8 s); the 25 s was local only | ADR-0003 |
+| A clean-clone simulation proves the CI jobs work | It passed on my Mac and the first real run failed: the lock file only had `darwin_arm64` checksums and the runner is `linux_amd64`. Fixed with four platforms | ADR-0004 |
 
 ## Open decisions
 
 - **Cloud and region:** AWS, `us-east-1` (set in the CLI config).
-- **Deployer credentials:** you must set the `quest-deployer` console password and MFA, then `aws login` as that user. The simulator proves the policy's allow/deny rules, but not that Terraform has every permission it needs. Expect to widen the policy if `plan` or `apply` hits AccessDenied.
+- **Deployer credentials:** done. `aws login --profile quest-deployer` works and the first `plan` and `apply` needed no policy change. MFA on that user is unconfirmed.
 - **Build location:** local `docker buildx --platform linux/amd64` through OrbStack emulation (verified working). CodeBuild is only a fallback if local builds prove too slow.
 - **Apply:** done 2026-10-20 (31 resources), billed until `make destroy`. Expected cost about $1.5 to $2/day (ALB, Fargate, IPv4); the budget alert goes to the address in `terraform.tfvars`.
 - **`/docker`:** decided 2026-10-20: keep Fargate, document 5 of 6 (ADR-0001).

@@ -1,6 +1,6 @@
 # ADR-0002: Database
 
-Status: Proposed
+Status: Accepted (2026-10-20). No database was needed and none was built.
 
 ## Context
 
