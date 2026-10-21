@@ -30,7 +30,7 @@ help: ## List targets
 	@echo; echo "  CLOUD=$(CLOUD) TAG=$(TAG) AWS_PROFILE=$(AWS_PROFILE) AWS_REGION=$(AWS_REGION)"
 
 build: ## Build the container image, tagged with the git SHA
-	docker buildx build --platform $(PLATFORM) -t $(IMAGE):$(TAG) --load .
+	docker buildx build --platform $(PLATFORM) --provenance=false -t $(IMAGE):$(TAG) --load .
 
 run-local: build ## Run the image on localhost, hardened like production
 	-@docker rm -f $(LOCAL_NAME) >/dev/null 2>&1
@@ -51,6 +51,9 @@ smoke: ## Run all six routes against URL (default: the cloud's `url` output)
 	@test -n "$(URL)" || { echo "no URL: pass URL=https://... or apply infra/$(CLOUD) first" >&2; exit 1; }
 	EXPECT_SECRET_WORD="$(EXPECT_SECRET_WORD)" tests/smoke.sh $(SMOKE_FLAGS) "$(URL)"
 
+# The image is built before it is pushed or deployed.
+apply push: build
+
 plan apply push destroy verify-clean: ## Delegated to infra/$(CLOUD)/Makefile
 	@test -f infra/$(CLOUD)/Makefile || { echo "infra/$(CLOUD)/Makefile does not exist yet" >&2; exit 1; }
-	$(MAKE) -C infra/$(CLOUD) $@ IMAGE=$(IMAGE) TAG=$(TAG)
+	$(MAKE) -C infra/$(CLOUD) $@ IMAGE=$(IMAGE) TAG=$(TAG) TTL=$(TTL) AUTO_APPROVE=$(AUTO_APPROVE)
