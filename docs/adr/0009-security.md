@@ -13,7 +13,7 @@ Status: Proposed
 ## Decision
 1. **Do not modify the vendor app's behavior.** Contain the risk instead.
 2. **Network:** tasks accept traffic only from the ALB security group; the ALB exposes 80 (redirect) and 443 only. Task egress is **not** restricted at first: `bin/001`, `bin/002`, and `bin/004` embed `net/http` clients, and `001`/`002` use IMDSv2 over plain HTTP, so I do not yet know which outbound calls they make. Observe on the first deploy, then tighten egress to what is actually used (at minimum 443 for ECR and logs).
-3. **Container:** non-root user, `readOnlyRootFilesystem` where the app tolerates it, no extra Linux capabilities, a pinned supported base image (digest if practical), and ECR image scan on push.
+3. **Container:** non-root user (uid 1000), read-only root filesystem, all Linux capabilities dropped, `no-new-privileges`, `tini` as PID 1, a pinned supported base image (digest if practical), and ECR image scan on push. All six routes were tested locally under `--read-only --cap-drop ALL --security-opt no-new-privileges`. In ECS, set `readonlyRootFilesystem` and `linuxParameters.capabilities.drop = ["ALL"]` (not yet tested on Fargate).
 4. **IAM:**
    - **Task execution role:** only the AWS-managed `AmazonECSTaskExecutionRolePolicy`, and no task role, since no AWS API calls were observed in the app source. The binaries' cloud detection uses metadata endpoints; whether it needs IAM is untested.
    - **Deployer identity (done 2026-10-20):** root is not used for deploys. `infra/aws/bootstrap/bootstrap.sh` creates the IAM user `quest-deployer` with the customer-managed policy `QuestDeployer` (`infra/aws/bootstrap/quest-deployer-policy.json`) plus AWS's `SignInLocalDevelopmentAccess` so `aws login` works. The policy:
@@ -45,7 +45,7 @@ Status: Proposed
 2. State file or tfvars leak exposes the key and secret word (no `.gitignore` yet).
 3. Self-signed cert trains users to click through warnings; no MITM protection for clients that skip verification.
 4. Public IPs on tasks, if the SG is ever loosened.
-5. Read-only root filesystem breaks the app (it may write temp files).
+5. Read-only root filesystem or dropped capabilities behave differently on Fargate than in local Docker. Not yet tested there.
 6. Removing the task IAM role breaks cloud detection if it needs IAM.
 7. Restricting egress before observing the binaries breaks cloud detection or the checks.
 8. `ec2:*` in `us-east-1` is broad: if the deployer session were stolen it could launch many instances (cost, abuse).
@@ -56,7 +56,7 @@ Status: Proposed
 2. `.gitignore` first. Local state stays on the operator machine; for anything beyond the demo use an encrypted S3 backend with locking.
 3. Use ACM with a real domain in production (after checking the `/loadbalanced` Host question in ADR-0003).
 4. Verify by requesting the task public IP directly and expecting a timeout.
-5. Test with the read-only flag locally; drop it and record the reason if the app fails.
+5. Run the first Fargate deploy with the same restrictions and `tests/smoke.sh`; drop a setting only if a route breaks, and record why.
 6. Check `/aws` and `/` output on the first deploy; add a minimal task role only if needed.
 7. Start with open egress, record outbound connections on the first deploy (for example with VPC flow logs), then tighten and re-run `tests/smoke.sh`. Roll back any rule that changes a check result.
 8. Console password plus MFA on the `quest-deployer` user, short sessions, a billing Budget alert (ADR-0008), and teardown after review (ADR-0007). Tighten `ec2:*` to the actions actually used if time allows.

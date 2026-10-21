@@ -14,9 +14,10 @@ Status: Proposed (provisional: gated on the `/docker` check, see Decision)
 Run the app on **AWS ECS on Fargate**, with at least 2 tasks across 2 AZs, **provisionally**.
 
 - Gate: deploy a throwaway Fargate task early and request `/docker`. If it does not report a Docker container, switch to **ECS on EC2** (`t3.micro` or similar x86-64 instance, ECS-optimized AMI, Docker runtime), which keeps the ALB, target group, and Terraform layout. Do not create `/.dockerenv` in the image to force a pass; that games the check. Record the finding in the README instead.
-- Image: `linux/amd64`, built from a currently supported `node` LTS (`node:24-slim` or `node:22-slim`, whichever passes the smoke test; fall back to the non-slim image if the binaries need libraries the slim image lacks). **Not `node:20`**: it reached end of life in April 2026.
+- Image: `linux/amd64`, `node:24-slim` (Node 24.22.0). Built and run locally 2026-10-20: the bundled binaries work in the slim image with no extra libraries, and `/docker` passes on a real Docker runtime. **Not `node:20`**: it reached end of life in April 2026.
 - The task runs as a non-root user. `WORKDIR` is the app root, because the app calls `bin/00x` by relative path. The task definition pins `runtime_platform` to `X86_64`.
 - Dependencies install with `npm ci` from the committed `package-lock.json`. `express` is bumped to `~4.22.3`, since the 4.16 line had 7 `npm audit` findings.
+- `tini` is the entrypoint. Node as PID 1 ignored SIGTERM (`docker stop` took 10.4 s and ended in SIGKILL); with `tini` it stops in 0.1 s. Do not also set ECS `initProcessEnabled`.
 
 ## Alternatives considered
 | Option | Why not (or when to switch) |
