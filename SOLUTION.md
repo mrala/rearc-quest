@@ -22,7 +22,7 @@ make smoke-local
 ```
 
 Tasks 1 and 2 (a git repository, infrastructure as code) are done: GPG-signed commits on top of the vendor
-history in a private repository, and Terraform with 31 resources in `infra/aws/`. The README's five checks,
+history in a GitHub repository (see Visibility below), and Terraform with 31 resources in `infra/aws/`. The README's five checks,
 plus `/aws`, which the app also serves:
 
 | README check | Route | Result |
@@ -35,6 +35,11 @@ plus `/aws`, which the app also serves:
 | TLS | `/tls` | **Pass.** |
 
 Not done: a second cloud (extra credit). The teardown was run on 2026-10-21; its result is under Teardown.
+
+**Visibility.** The repository was created private and made public by the author on 2026-10-21. It contains
+the quest's secret word (in this file and in the index-page and `/secret_word` screenshots), and the README asks
+that solutions shared publicly be made private again after interviewing. The vendor app and binaries it
+contains are already public in the vendor repository.
 
 ## Architecture
 

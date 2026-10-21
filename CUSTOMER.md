@@ -48,7 +48,7 @@ and actual spend was not measured. Remove the stack when you are done (see [Tear
 Use one of three ways. All give the same files; the first two keep the git history, which the Makefile uses
 to name each image.
 
-**a) Clone the repository** (you need access to it):
+**a) Clone the repository** (use the URL you were given; it may be public or private):
 
 ```
 git clone <repository URL> quest

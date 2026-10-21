@@ -9,7 +9,7 @@ Verified (observed in this repo or with local commands):
 - The binaries are Linux x86-64 ELF. The dev machine is darwin arm64, so they can't run locally. The image must be built for `linux/amd64`.
 - Local tooling (verified 2026-10-20): `docker` 29.8.2 (OrbStack, with working `linux/amd64` emulation), `terraform` 1.16.6 (asdf), `aws` 2.38.2, `node`. `bin/003` runs under amd64 emulation and prints the Docker success message.
 - **AWS identity:** the default profile is the **root user** via `aws login` (region `us-east-1`, account has root MFA on, 4 existing IAM users and 5 CDK roles that must not be touched). Root is not used for deploys. The scoped IAM user `quest-deployer` and customer-managed policy `QuestDeployer` were created from `infra/aws/bootstrap/` (see ADR-0009), and `aws login --profile quest-deployer` works and reports `user/quest-deployer`. MFA on that user was confirmed by the author on 2026-10-21 (not checkable from the CLI).
-- `origin` is the private `https://github.com/mrala/rearc-quest.git` and all commits are pushed (2026-10-20). The vendor repo is `upstream`.
+- `origin` is `https://github.com/mrala/rearc-quest.git`. It was created private and made public by the author on 2026-10-21; the README asks that solutions shared publicly be made private again after interviewing. All commits are pushed. The vendor repo is `upstream`.
 - `.gitignore` and `package-lock.json` now exist. `express` was bumped from `~4.16.3` to `~4.22.3` (`npm audit`: 0 vulnerabilities, down from 7). Locally, on Node 26, the server starts and answers all six routes plus a 404. The bundled binaries cannot run on macOS (`cannot execute binary file`), so only the Express layer was tested.
 - **Header command injection confirmed locally:** a request header `X-Probe: $(touch /tmp/quest-inj)` created the file. The marker was removed. Do not repeat this against the public deployment.
 - The app has no database dependency in `package.json` or `src/000.js`. `SECRET_WORD` is an env var.
@@ -102,7 +102,7 @@ Inferred, not verified:
 
 | # | Group | Verification | Depends on |
 |---|---|---|---|
-| FG0 | Prerequisites | private repo, `.gitignore`, lockfile, scoped `quest-deployer` identity, Docker, Terraform | none |
+| FG0 | Prerequisites | repo (created private), `.gitignore`, lockfile, scoped `quest-deployer` identity, Docker, Terraform | none |
 | FG1 | Packaging | local container serves all routes (**done 2026-10-20**) | FG0 |
 | FG2 | Public cloud + index page | `/` shows the secret word; `/aws` | FG1 |
 | FG3 | Containerized runtime | `/docker`: fails on Fargate, accepted (ADR-0001) | FG2 |

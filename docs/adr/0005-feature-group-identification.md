@@ -19,7 +19,7 @@ Group work into **vertical feature groups**, one per verifiable endpoint, delive
 
 | # | Group | Quest tasks | Verification | Depends on |
 |---|---|---|---|---|
-| FG0 | Prerequisites | 1 | private repo, `.gitignore`, lockfile, scoped `quest-deployer` identity, Docker, Terraform | none |
+| FG0 | Prerequisites | 1 | repo (created private), `.gitignore`, lockfile, scoped `quest-deployer` identity, Docker, Terraform | none |
 | FG1 | Packaging | 3 (image only) | local container serves `/` and the other routes (**done 2026-10-20**) | FG0 |
 | FG2 | Public cloud + index page | 2, 4 | `/` shows the secret word; `/aws` | FG1 |
 | FG3 | Containerized runtime | 3 | `/docker` **fails on Fargate (accepted, ADR-0001)**; the container itself runs and passes `/docker` on a real Docker runtime locally | FG2 |
