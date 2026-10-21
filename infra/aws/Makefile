@@ -52,14 +52,18 @@ push: guard
 destroy: guard init
 	$(TF) destroy $(APPROVE) $(TF_VARS)
 
-# Safety net after destroy (ADR-0007). Prints what is left; exits 1 if anything is.
-# The tagging API is not exhaustive and can lag, so each service is also queried.
-# The deployer's own IAM user and policy (infra/aws/bootstrap) are tagged project=quest
-# but are not part of the stack, so they are excluded.
+# Safety net after destroy (ADR-0007). make reports the recipe's result as "Error N" (make's own
+# exit status is 2 for any failure):
+#   no error  nothing left
+#   Error 1   a service query found a leftover resource: act on it
+#   Error 3   only the tagging API lists something. It can keep listing deleted resources for a while (more than 4 minutes in testing),
+#             so if every service check is clean, run this again later before treating it as a leftover.
+# Ignored on purpose: the deployer's own IAM user and policy (infra/aws/bootstrap) are tagged
+# project=quest but are not part of the stack, and deregistered ECS task definitions stay
+# listed as INACTIVE indefinitely at no cost.
 verify-clean: guard
-	@left=0; \
+	@left=0; lag=0; \
 	check() { if [ -n "$$2" ] && [ "$$2" != "None" ]; then echo "STILL THERE  $$1:"; echo "$$2" | tr '\t' '\n' | sed 's/^/    /'; left=1; else echo "clean        $$1"; fi; }; \
-	check "tagged project=quest" "$$(aws resourcegroupstaggingapi get-resources --tag-filters Key=project,Values=quest --query 'ResourceTagMappingList[].ResourceARN' --output text | tr '\t' '\n' | grep -v -E 'policy/QuestDeployer|user/quest-deployer')"; \
 	check "load balancers" "$$(aws elbv2 describe-load-balancers --query "LoadBalancers[?starts_with(LoadBalancerName,'quest')].LoadBalancerArn" --output text)"; \
 	check "target groups" "$$(aws elbv2 describe-target-groups --query "TargetGroups[?starts_with(TargetGroupName,'quest')].TargetGroupArn" --output text)"; \
 	check "ECS clusters" "$$(aws ecs list-clusters --query "clusterArns[?contains(@,'/quest')]" --output text)"; \
@@ -68,5 +72,9 @@ verify-clean: guard
 	check "ACM certificates" "$$(aws acm list-certificates --query "CertificateSummaryList[?starts_with(DomainName,'quest.')].CertificateArn" --output text)"; \
 	check "VPCs" "$$(aws ec2 describe-vpcs --filters Name=tag:project,Values=quest --query 'Vpcs[].VpcId' --output text)"; \
 	check "IAM role quest-task-exec" "$$(aws iam get-role --role-name quest-task-exec --query 'Role.Arn' --output text 2>/dev/null)"; \
+	tagged="$$(aws resourcegroupstaggingapi get-resources --tag-filters Key=project,Values=quest --query 'ResourceTagMappingList[].ResourceARN' --output text | tr '\t' '\n' | grep -v -E 'policy/QuestDeployer|user/quest-deployer|:task-definition/')"; \
+	if [ -n "$$tagged" ]; then echo "RECHECK      tagged project=quest (the tagging API can keep listing deleted resources for a while; if every check above is clean, run this again later):"; echo "$$tagged" | sed 's/^/    /'; lag=1; else echo "clean        tagged project=quest"; fi; \
 	echo "Also check Cost Explorer tomorrow (ADR-0007)."; \
-	exit $$left
+	[ $$left -eq 0 ] || exit 1; \
+	[ $$lag -eq 0 ] || exit 3; \
+	exit 0

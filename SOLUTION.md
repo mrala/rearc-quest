@@ -8,16 +8,17 @@ The vendor challenge text stays in [`README.md`](README.md). This file is the su
 
 ## Status
 
-Live until 2026-10-27 (the `ttl` tag); I plan to tear it down on or after that date (see [Teardown](#teardown)).
-Base URL: `https://quest-1405847154.us-east-1.elb.amazonaws.com`. The certificate is self-signed, so use
-`curl -k` or accept the browser warning. Screenshots of every route are in [`docs/screenshots/`](docs/screenshots/).
+The stack ran from 2026-10-20 to 2026-10-21 and has been **torn down** (see [Teardown](#teardown)), so the URL
+in the screenshots, `https://quest-1405847154.us-east-1.elb.amazonaws.com`, no longer exists. The results below
+are from that deployment, and screenshots of every route are in [`docs/screenshots/`](docs/screenshots/). Its
+certificate was self-signed.
 
-**Try it** (needs only `curl` and this repository; the second command prints one PASS or FAIL row per route):
+**Try it.** The live deployment is gone, but the four routes that work outside a cloud can be tried locally
+with only Docker (about 10 seconds once the image is built), and a redeploy takes about 15 minutes (see
+[Deploying](#deploying)):
 
 ```
-URL=https://quest-1405847154.us-east-1.elb.amazonaws.com
-curl -k "$URL/"                  # the secret word
-tests/smoke.sh -k "$URL"         # all six routes
+make smoke-local
 ```
 
 Tasks 1 and 2 (a git repository, infrastructure as code) are done: GPG-signed commits on top of the vendor
@@ -33,7 +34,7 @@ plus `/aws`, which the app also serves:
 | Load balancer | `/loadbalanced` | **Pass.** |
 | TLS | `/tls` | **Pass.** |
 
-Not done: a second cloud (extra credit) and a teardown run. See the end of this file.
+Not done: a second cloud (extra credit). The teardown was run on 2026-10-21; its result is under Teardown.
 
 ## Architecture
 
@@ -119,16 +120,30 @@ three options are in [`CUSTOMER.md`](CUSTOMER.md#1-get-the-code), and so is how 
 
 ```
 make destroy        # shows the AWS identity, then Terraform asks for confirmation
-make verify-clean   # lists anything still tagged project=quest, and queries each service; exits 1 if any is left
+make verify-clean   # queries each service and the tagging API for leftovers; see the result below
 infra/aws/bootstrap/bootstrap.sh destroy   # optional: remove the deploy user and its policy
 ```
 
 Sessions from `aws login` last up to 12 hours. If `make destroy` reports no AWS session, run
 `aws login --profile quest-deployer --region us-east-1` first.
 
-**I have not run `make destroy` yet.** `verify-clean` is tested against a clean account and against a stubbed
-leftover, not against a real teardown. Terraform state is local and holds the TLS private key and the secret
-word in plaintext, so it is gitignored and must stay on the machine.
+**Teardown, run on 2026-10-21.** `make destroy` removed all 31 resources in 185 seconds with no error and no
+rerun. The slowest step was the internet gateway (2 min 54 s), which waits for the tasks' public IPs and
+network interfaces to release. This is the dependency delay ADR-0007 anticipated, and Terraform's own waiting
+was enough. Afterwards the load balancer, target groups, ECR repository, log group, ACM certificate, VPC, IAM
+role and budget were gone, there were no leftover network interfaces or Elastic IPs, the state was empty, and
+the old URL no longer responded.
+
+`make verify-clean` then reported leftovers that were not leftovers. The tagging API still listed the deleted
+security group and its rules and the ECS service and cluster four minutes after the delete, and it lists the
+three deregistered ECS task definitions indefinitely (AWS keeps them as INACTIVE, at no cost). Direct checks
+showed each of them gone or INACTIVE. I changed `verify-clean` to ignore task definitions and to report
+tagging-API-only entries as `RECHECK` (`Error 3`) instead of a leftover (`Error 1`). The deploy user, its
+policy and AWS's service-linked roles for ECS and load balancing are not part of the stack and remain.
+
+Terraform state is local and held the TLS private key and the secret word in plaintext. It is gitignored, and
+after a destroy the backup file `terraform.tfstate.backup` still holds the old contents, so delete it when you
+no longer need it.
 
 ## Findings
 
@@ -194,6 +209,9 @@ real spend**, because billing data lags. A budget alert emails at 80% of actual 
 a $10 limit. It covers the whole account, because filtering by the `project` tag needs the tag activated as a
 cost allocation tag, which takes about a day. Budgets alert but do not stop spend.
 
+The stack ran about 15 hours (2026-10-20 22:44 to 2026-10-21 13:33 local time), which at the daily estimate is
+roughly $1 to $1.25. I have not seen the real bill, so that figure is an estimate.
+
 ## Using AI
 
 I used an AI coding assistant (Claude, `anthropic/claude-sonnet-5-5`, in the `omp` command-line agent) for
@@ -233,6 +251,9 @@ to catch them. The full list is the corrections log in `docs/PLAN.md`; the main 
 - Operational slips: a `set -e` stayed active in the shell and cut a test batch short, and it ran `gpg` from a
   non-interactive shell, which used one of the YubiKey's three PIN attempts before I cached the PIN. It
   stopped there instead of retrying.
+- Its `verify-clean` reported a clean teardown as leftovers. The ADR had warned that the tagging API lags, but
+  the tool treated lag as a failure and did not allow for deregistered ECS task definitions, which AWS keeps
+  forever. Only the real teardown showed it.
 
 **What I would not trust without checking:** anything in the ADRs marked `[INFERENCE]` that has no "verified"
 note next to it, the cost figures, and Terraform argument names. The module passes `terraform validate`
@@ -287,5 +308,5 @@ The full list, in rough order of value:
     paths for GCP and Azure, so I would expect GCP (Cloud Run behind a load balancer) to be the quickest.
 12. **Loose ends I know about:** the `quest-deployer` policy allows `ec2:*` in `us-east-1`, which is broader
     than the stack needs (MFA is enabled on that user, confirmed by the author on 2026-10-21; I could not
-    check it from the CLI); I have not run a real teardown; and one combined build-and-test command hung for
-    300 seconds once and I could not reproduce it.
+    check it from the CLI); and one combined build-and-test command hung for 300 seconds once and I could not
+    reproduce it.

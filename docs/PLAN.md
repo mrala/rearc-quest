@@ -1,6 +1,6 @@
 # Quest Plan: AWS, Terraform, ECS Fargate
 
-Status: Executed on AWS on 2026-10-20 (5 of 6 checks pass; `/docker` fails on Fargate and is accepted). Remaining: teardown by 2026-10-27. Decisions are recorded in `docs/adr/0001` to `0010`, whose statuses reflect what was built and tested. This document began as a plan; it now also holds the findings and a log of what had to be corrected (see "Corrections log").
+Status: Executed on AWS on 2026-10-20 (5 of 6 checks pass; `/docker` fails on Fargate and is accepted) and torn down on 2026-10-21 (31 resources destroyed in 185 s, see ADR-0007). Decisions are recorded in `docs/adr/0001` to `0010`, whose statuses reflect what was built and tested. This document began as a plan; it now also holds the findings and a log of what had to be corrected (see "Corrections log").
 
 ## Findings
 
@@ -80,7 +80,7 @@ Inferred, not verified:
    - Output the ALB DNS name.
    - **Done and applied 2026-10-20:** the module (`infra/aws/*.tf`, 31 resources), `infra/aws/Makefile` and `infra/contract.md`. Before the apply, `terraform validate` passed on aws provider 6.69.1 and tls 4.4.1 (lock file committed), `terraform plan` as `quest-deployer` showed the expected resources, the TLS policy `ELBSecurityPolicy-TLS13-1-2-2021-06` existed, and 39 IAM-simulator checks covering every non-wildcard action Terraform needs were all allowed. The apply then ran with no AccessDenied (see Findings).
    - `make apply` has to create the ECR repository first (`-target`), push the image, then apply the rest, because the service starts tasks as soon as it exists. The Makefile refuses to run as root and prints the identity and region first.
-   - `make verify-clean` queries the tagging API and each service, excludes the deployer's own user and policy, and exits 1 if anything is left. Tested clean, and against a stubbed leftover.
+   - `make verify-clean` queries each service and the tagging API, ignores the deployer's own user and policy and deregistered task definitions, and fails with `Error 1` for a leftover found by a service query or `Error 3` when only the tagging API lists something (it lags). Tested on a clean account, against a stubbed leftover, and after the real teardown.
    - **Done:** `Makefile` with `CLOUD` (default `aws`). `build`, `run-local`, `smoke-local` and `smoke` work; `plan`, `apply`, `push`, `destroy` and `verify-clean` delegate to `infra/$(CLOUD)/Makefile`. `apply` and `push` build first. Images are tagged with the git SHA (`-dirty` if uncommitted), never `latest`.
    - **Done:** `tests/smoke.sh [-k] [-H hdr]... [-s route]... [-t secs] BASE_URL` checks all six routes in parallel, prints one row per route, and exits non-zero on any failure. `EXPECT_SECRET_WORD` also checks `/secret_word`. The success text of `/` and `/aws` is unknown, so they pass when they return anything other than the "not in a cloud" text.
    - `make smoke-local` runs the hardened image with forged ALB headers and skips `/` and `/aws` (they need a cloud): 4 passed, 0 failed, 2 skipped, about 8 s. Tested failure paths: missing headers, wrong expected word, dead port, bad arguments.
@@ -93,9 +93,9 @@ Inferred, not verified:
    - The injection was already confirmed locally; do not probe the public deployment.
    - **Done 2026-10-20:** `docs/screenshots/01-index.png` to `06-tls.png`, one per route, taken through the ALB with headless Chromium (certificate errors ignored, since the cert is self-signed). Each image has a caption strip added above the page showing the URL, HTTP status and UTC capture time, because headless screenshots have no address bar; the page content below it is unmodified. `03-docker.png` is the accepted `/docker` failure. Retake them if the stack is rebuilt, because the ALB hostname changes.
 6. **Docs (FG7)**
-   - **Done 2026-10-20:** `SOLUTION.md`, linked from the top of `README.md`, covering architecture, deploy and teardown steps, findings, cost, the AI-usage disclosure (prompts, what helped, what the AI got wrong, what to verify), and "Given more time". Teardown has not been run yet. The ADRs were drafted with AI assistance and contain judgment calls; the corrections log below records the ones that had to be revised.
+   - **Done 2026-10-20:** `SOLUTION.md`, linked from the top of `README.md`, covering architecture, deploy and teardown steps, findings, cost, the AI-usage disclosure (prompts, what helped, what the AI got wrong, what to verify), and "Given more time". The teardown result was added on 2026-10-21. The ADRs were drafted with AI assistance and contain judgment calls; the corrections log below records the ones that had to be revised.
    - The "Given more time, I would improve..." answer. Candidates: patching the `exec` injection with `execFile`, a real domain with ACM (after checking the Host question), private subnets with NAT or VPC endpoints, CI/CD with OIDC, Secrets Manager, WAF, autoscaling, remote state with locking, image scanning and pinned digests.
-7. **Teardown**: `make destroy`, then check for leftover tagged resources (ADR-0007).
+7. **Teardown (done 2026-10-21):** `make destroy` removed all 31 resources in 185 s with no error. `make verify-clean` then reported deleted resources as leftovers (tagging-API lag, and deregistered task definitions that AWS keeps as INACTIVE), so it was corrected; details in ADR-0007.
 8. **Optional extra credit**: GCP (Cloud Run behind a load balancer) or Azure, only after FG0 to FG7 are complete on AWS. Add `infra/gcp/` (or `infra/azure/`) implementing `infra/contract.md`, reuse `tests/smoke.sh`, and record any per-cloud differences in the README (ADR-0010).
 
 ## Feature groups (ADR-0005)
@@ -172,13 +172,14 @@ docs/                       PLAN.md, adr/
 | `/docker` on Fargate "may fail" | Fails as predicted: Fargate has no `/.dockerenv` | ADR-0001 |
 | Cloud detection assumed possibly slow on Fargate | Fast there (about 0.15 to 1.8 s); the 25 s was local only | ADR-0003 |
 | A clean-clone simulation proves the CI jobs work | It passed on my Mac and the first real run failed: the lock file only had `darwin_arm64` checksums and the runner is `linux_amd64`. Fixed with four platforms | ADR-0004 |
+| `verify-clean` can be trusted right after a destroy | It listed deleted resources (tagging-API lag) and deregistered task definitions (kept as INACTIVE forever). It now ignores the latter and reports lag-only results as `Error 3` | ADR-0007 |
 
 ## Open decisions
 
 - **Cloud and region:** AWS, `us-east-1` (set in the CLI config).
 - **Deployer credentials:** done. `aws login --profile quest-deployer` works, the first `plan` and `apply` needed no policy change, and MFA on the user is enabled (confirmed by the author on 2026-10-21).
 - **Build location:** local `docker buildx --platform linux/amd64` through OrbStack emulation (verified working). CodeBuild is only a fallback if local builds prove too slow.
-- **Apply:** done 2026-10-20 (31 resources), billed until `make destroy`. Expected cost about $1.5 to $2/day (ALB, Fargate, IPv4); the budget alert goes to the address in `terraform.tfvars`.
+- **Apply:** done 2026-10-20 (31 resources) and destroyed 2026-10-21, about 15 hours later. The daily estimate of $1.5 to $2 (ALB, Fargate, IPv4) implies roughly $1 to $1.25 for the run; the real cost has not been measured.
 - **`/docker`:** decided 2026-10-20: keep Fargate, document 5 of 6 (ADR-0001).
 - **Second cloud:** none is planned beyond the contract in ADR-0010. GCP or Azure is extra credit, taken only after the AWS deliverable is complete.
 - **Account type:** check whether the account is on the credits-based free plan and whether it restricts any service we need (ADR-0008).

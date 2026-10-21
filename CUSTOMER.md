@@ -230,7 +230,7 @@ Set in `infra/aws/terraform.tfvars`.
 
 ```
 make destroy          # Terraform shows the plan and asks for confirmation
-make verify-clean     # lists anything still tagged project=quest; exits 1 if something is left
+make verify-clean     # queries each service and the tagging API for leftovers (see below for what its result means)
 ```
 
 If you also want to remove the deploy user, do it **after** the stack is gone, since the stack's removal needs
@@ -240,9 +240,16 @@ its permissions:
 infra/aws/bootstrap/bootstrap.sh destroy      # run with admin credentials
 ```
 
-`make destroy` removes the images and logs too. **Teardown was not run in the reference deployment**, so if
-`destroy` stops on a dependency (for example a network interface that has not released yet), wait a minute and run
-it again. Check Cost Explorer the next day for anything still billing.
+`make destroy` removes the images and logs too. In the reference deployment it removed all 31 resources in about
+3 minutes with no errors. The slowest step was the internet gateway (almost 3 minutes), which waits for the
+tasks' network interfaces to release, so do not interrupt it. If `destroy` ever stops on a dependency, wait a
+minute and run it again.
+
+`make verify-clean` ends in one of three ways, shown by make's `Error N` line: no error means nothing is left;
+`Error 1` means a service query found a resource that still exists, so act on it; `Error 3` means only the
+tagging API still lists something. That list can keep showing deleted resources for a while (in testing they were still listed more than four minutes after the delete), so if every service
+line says `clean`, run it again later. Deregistered ECS task definitions stay listed as INACTIVE forever, cost
+nothing, and are ignored. Check Cost Explorer the next day for anything still billing.
 
 ## Troubleshooting
 
@@ -257,6 +264,7 @@ it again. Check Cost Explorer the next day for anything still billing.
 | Tasks keep restarting, or `exec format error` in the logs | The image is not `linux/amd64`. The `Dockerfile` pins it; check that Docker buildx and emulation work. |
 | Service does not become steady | Look at the service events (`aws ecs describe-services`), the target health (`aws elbv2 describe-target-health --target-group-arn ...`) and the logs. |
 | `terraform init` fails with a checksum error | Provider checksums for linux and macOS (amd64 and arm64) are in the lock file. On another platform, run `terraform -chdir=infra/aws providers lock -platform=<os>_<arch>`. |
+| `make verify-clean` ends with `Error 3` | Only the tagging API still lists deleted resources; it can keep doing so for a while (more than four minutes in testing). If every service line says `clean`, run it again later. `Error 1` is different: that resource really exists. |
 | Browser shows a certificate warning | Expected: the certificate is self-signed. |
 
 ## What this is not (yet)
